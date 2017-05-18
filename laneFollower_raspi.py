@@ -1,5 +1,6 @@
 #!/usr/bin/python
 # -*- coding: iso-8859-15 -*-
+# this is a test!
 from __future__ import division
 import serial
 import picamera
