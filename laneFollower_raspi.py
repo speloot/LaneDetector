@@ -1,11 +1,12 @@
 #!/usr/bin/python
 # -*- coding: iso-8859-15 -*-
-# this is a test!
+
 from __future__ import division
+import cv2
 import serial
 import picamera
 import picamera.array
-import cv2
+
 import math
 import numpy as np
 import time
@@ -13,11 +14,6 @@ import struct
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-
-global camAngle
-#camAngle = 1.40564764938
-saveIMG = True
-global imgBgr
 
 
 def processImage(image, nRow):
@@ -31,9 +27,7 @@ def processImage(image, nRow):
 
 	gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
 	(thresh, bw) = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-	#bw = gray > 128
 	processedRow = bw
-	#print(processedRow)
 	return processedRow
 
 def getWhitePixelCoordinates(row):
@@ -76,9 +70,9 @@ def getLocalCoordinates(row, points):
     Output: a list of tuples: points: coordinates of white pixels in cm from camera origin
 
     '''
-    camAngle = 74.6 #72.5
+    camAngle = 74.6 	# in degrees
     pi = 3.14159265
-    h = 20 # cm
+    h = 20 				# cm
 
     cam_mount_angle = camAngle * pi/180
     cam_x_fov = 62.2*pi/180
@@ -96,8 +90,6 @@ def getLocalCoordinates(row, points):
         y = math.tan(theta_y) * h
         r = math.sqrt(y**2+h**2)
         x = r * math.tan(theta_x)
-        #xPositions.append(x)
-        #yPositions.append(y)
     	localPoints.append((x,y))
 
     return localPoints
@@ -117,7 +109,6 @@ def getMarkingPoints(whitePoints):
 	for m in range(0,nWhitePoints):
 		if( m != nWhitePoints-1):
 			width = whitePoints[m+1][0] - whitePoints[m][0]
-			#print width
 			if ( (width < maxLineWidth) & (width > minLineWidth) ):
 				markings.append(whitePoints[m])
 				markings.append(whitePoints[m+1])
@@ -142,7 +133,7 @@ def isConcatable(currentPoint, nextPoint):
 	Input: two successive points (x1,y1),(x2, y2) 
 	Output: boolean True or False 
 	'''
-	margin = 0.155#0.155  #-----------------------------------------------------to be adjusted
+	margin = 0.155
 	rangeResult = False
 	rightOffset = currentPoint[1] + margin
 	leftOffset = currentPoint[1] - margin
@@ -151,39 +142,30 @@ def isConcatable(currentPoint, nextPoint):
 
 	return rangeResult
 
-def pidController(y, setPoint, t, Kd, Kp, prevIntegrationState, prevError , Ki):
+def pidController(actualPoint, setPoint, prevError, Kd, Kp,):
 	'''
-	Calculate System Input using a PID Controller
+	Calculate System Input using a "PID Controller"
 
 	'''
-	# Initialization
-	#prevIntegrationState = u0
-	#prevError = e0
-
 	# Error between the desired and actual output
-	actualError = setPoint - y
+	actualError = setPoint - actualPoint
 
-	# Integration Input
-	integrationState = 0
 	# Derivation Input
-	derivativeState = 1/Kd * (actualError - prevError )/ t
+	derivativeState = 1/Kd * (actualError - prevError )
 
-	# Adjust previous values
-	#prevError = actualError
-	#prevIntegratorState = integrationState
-
-	# Calculate input for the system
-	pidResult = Kp * (actualError + integrationState + derivativeState)
+	# Calculate system input
+	pidResult = Kp * (actualError + derivativeState)
 
 	
-	return pidResult, actualError, integrationState
+	return pidResult, actualError
 
-
-	
 
 
 s = serial.Serial('/dev/ttyAMA0', 19200)
 time.sleep(2)
+
+global imgBgr
+global camAngle
 u0 = 0
 e0 = 0																	
 pi = 3.14159265
@@ -193,7 +175,6 @@ pi = 3.14159265
 with picamera.PiCamera() as camera:
 	camera.resolution = (640, 480) 
 	camera.exposure_mode = 'sports'
-	#camera.start_preview()
 	time.sleep(3)
 	
 	while(True):
@@ -202,20 +183,19 @@ with picamera.PiCamera() as camera:
 	
 		with picamera.array.PiRGBArray(camera) as stream:
 
-					# Use the video-port for fast captures
+				# Use the video-port for fast captures
 				camera.capture(stream, format='bgr', use_video_port=True)
 				imgBgr = stream.array
 				
-				nScanLines = 50 # 70  #number of scan lines
-				#-------------------------------------------------------------------------------------------------
-				#-------------------------------------------------------------------------------------------------
-				stepSize = 1 #distance between scan lines!?
-
-				binRows = []
-				whitePixels = []
-				rowMarkingPoints = []
-				markingPoints = []
+				nScanLines = 50  					#number of scan lines
+				stepSize = 1	 					#distance between scan lines!?
 				beginingRow = imgBgr.shape[0] - 1  	# start from the second row!?
+
+
+				whitePixels = []
+				markingPoint
+				markingPoints = []
+				
 
 				for i in range(0,nScanLines):
 						nRow = beginingRow - i * stepSize
@@ -227,7 +207,9 @@ with picamera.PiCamera() as camera:
 						# represent the location of white pixels in vehicle coordinate system
 						mappedPoints = getLocalCoordinates(nRow, whitePixelsCoordinates)
 						# whitePixelsCoordinates need to be checked if they actually are marking lines(or their mapped values)
-						markingPoints.append((getMarkingPoints(mappedPoints)))
+						markingPoint = getMarkingPoints(mappedPoints)
+						markingPoints.append((markingPoint))
+
 				# clustering: pick a marking line of current row, compare it to the other elements of previous and next ones
 				clusters = []
 				for line in range(0, nScanLines):	
@@ -262,14 +244,12 @@ with picamera.PiCamera() as camera:
 					y = []
 					coefficients.append(coeffs.tolist())
 
-				#print('coefficient: %s' %(coefficients))
 				slope1 = coefficients[0][0]
-				#print('slope1: %s' %slope1)
-
-				#print('coeeficient[0] %s'%(coefficients[0]))
+				
 				transposedCoefficients = [1/coefficients[0][0], -coefficients[0][1]]
-				x = np.arange(15)
-				lineFunc = np.poly1d(transposedCoefficients)
+
+				#x = np.arange(15)
+				#lineFunc = np.poly1d(transposedCoefficients)
 				#plt.axis('equal')
 				#plt.subplot(122)
 				#plt.plot(x, lineFunc(x))
@@ -277,18 +257,17 @@ with picamera.PiCamera() as camera:
 				#plt.savefig('pic')
 
 				angle = math.atan(slope1)	# in radians [0, pi]
-				print angle
+				print ('angle: %s'%angle)
 
 				setPoint = 0.16
-				# idController(y, setPoint, t, Kd, Kp, prevIntegrationState, prevError , Ki):
-				( PIDoutput, e0, u0 ) = pidController(angle, setPoint, 1,  0.25, 70, u0, e0, Ki=0.0)
-				
-				#scaledPIDOutput = ((155*(PIDoutput-(-pi/2)))/(pi)+100)
+			
+				( PIDoutput, e0) = pidController(angle, setPoint, e0, 1, 70) # constant value need to be adjusted
+
+				# Set Speed of Motors
 				initialSpeed = 60
-				rWheelSpeed =  initialSpeed + int(PIDoutput)		# why 0.7 ?!!! 
+				rWheelSpeed =  initialSpeed + int(PIDoutput)		
 				lWheelSpeed =  initialSpeed - int(PIDoutput)
 
-				#print('rWheelSpeed%s'%(rWheelSpeed))
 
 				if(rWheelSpeed<0):
 					rWheelSpeed = 0
