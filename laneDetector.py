@@ -3,16 +3,12 @@
 
 from __future__ import division
 import cv2
-import serial
-import picamera
-import picamera.array
-
+import os
 import math
 import numpy as np
 import time
 import struct
 import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 
@@ -44,7 +40,7 @@ def getWhitePixelCoordinates(row):
 	nonZeroCoordinates = []
 	beginingPixel = []
 	endPixel = []
-	binarizedRow = []
+	#binarizedRow = []
 	# Scan a row of a binary image 
 	j = 4 # narrow the frame!?
 	for j in range(nCol-10):
@@ -52,13 +48,13 @@ def getWhitePixelCoordinates(row):
 		val = int(row[0][j+1]) - int(row[0][j])
 		if (val > 0):
 			nonZeroCoordinates.append((j))
-			binarizedRow.append(1)
+			#binarizedRow.append(1)
 		elif (val < 0):
 			nonZeroCoordinates.append((j))
-			binarizedRow.append(1)
-		else: binarizedRow.append(0)
+			#binarizedRow.append(1)
+		#else: binarizedRow.append(0)
 
-	return nonZeroCoordinates, binarizedRow
+	return nonZeroCoordinates #, binarizedRow
 
 def getLocalCoordinates(row, points):
 
@@ -102,13 +98,14 @@ def getMarkingPoints(whitePoints):
 	Output:  a list of possible marking points
 	'''
 	markings = []
-	minLineWidth = 1.5
-	maxLineWidth = 2.7
+	minLineWidth = 1.5#1.74 	#???
+	maxLineWidth = 2.7#1.99	#???
 	nWhitePoints = len(whitePoints)
 
 	for m in range(0,nWhitePoints):
 		if( m != nWhitePoints-1):
 			width = whitePoints[m+1][0] - whitePoints[m][0]
+			#print('\nwidth :%s'%width)
 			if ( (width < maxLineWidth) & (width > minLineWidth) ):
 				markings.append(whitePoints[m])
 				markings.append(whitePoints[m+1])
@@ -142,7 +139,7 @@ def isConcatable(currentPoint, nextPoint):
 
 	return rangeResult
 
-def pidController(actualPoint, setPoint, prevError, Kd, Kp,):
+def pidController(actualPoint, setPoint, prevError, Kd, Kp):
 	'''
 	Calculate System Input using a "PID Controller"
 
@@ -161,141 +158,143 @@ def pidController(actualPoint, setPoint, prevError, Kd, Kp,):
 
 
 
-s = serial.Serial('/dev/ttyAMA0', 19200)
-time.sleep(2)
-
 global imgBgr
 global camAngle
 u0 = 0
-e0 = 0																	
+e0 = 0																		
 pi = 3.14159265
 
 
-
-with picamera.PiCamera() as camera:
-	camera.resolution = (640, 480) 
-	camera.exposure_mode = 'sports'
-	time.sleep(3)
+imagePath = '/home/siaesm/Pictures/img_02/img032.jpg'
+imgBgr = cv2.imread(imagePath)
+#cv2.imshow('image', imgBgr)
+#cv2.waitKey(0)
+startTime=time.time()
 	
-	while(True):
-
-		startTime=time.time()
-	
-		with picamera.array.PiRGBArray(camera) as stream:
-
-				# Use the video-port for fast captures
-				camera.capture(stream, format='bgr', use_video_port=True)
-				imgBgr = stream.array
 				
-				nScanLines = 100  					#number of scan lines
-				stepSize = 1	 					#distance between scan lines!?
-				beginingRow = imgBgr.shape[0] - 1  	# start from the second row!?
+nScanLines = 150  					#number of scan lines
+stepSize = 1	 					#distance between scan lines!?
+beginingRow = imgBgr.shape[0] - 1  	# start from the second row!?
 
 
-				whitePixels = []
-				markingPoint = []
-				markingPoints = []
-				
-
-				for i in range(0,nScanLines):
-						nRow = beginingRow - i * stepSize
-						# binarize a row of an image
-						processedRow = processImage(imgBgr, nRow)
-						# extract white pixels
-						( whitePixelsCoordinates, binRow ) = getWhitePixelCoordinates(processedRow)
-						whitePixels.append(whitePixelsCoordinates)
-						# represent the location of white pixels in vehicle coordinate system
-						mappedPoints = getLocalCoordinates(nRow, whitePixelsCoordinates)
-						# whitePixelsCoordinates need to be checked if they actually are marking lines(or their mapped values)
-						markingPoint = getMarkingPoints(mappedPoints)
-						markingPoints.append((markingPoint))
-
-				# clustering: pick a marking line of current row, compare it to the other elements of previous and next ones
-				clusters = []
-				if (markingPoints!=[]):
-					
-					for line in range(0, nScanLines):	
-						for point in markingPoints[line]:
-							assigned = False
-							for cluster in clusters:
-								if (isInSameCluster(point[0],cluster[-1][0])):
-									cluster.append(point)
-									assigned = True
-							if not assigned:
-								clusters.append([point])
-
-					# sort the clusters in order to label them correctly!
-					sortedClusters = sorted(clusters, key=lambda cluster: cluster[0][0])
-					"""
-					plt.subplot(121)
-					for cluster in sortedClusters:
-						for point in cluster:
-							plt.scatter(point[0], point[1], s=5, facecolor='0.1', lw = 0)
-					"""
-					degree = 1
-					coeffs = []
-					x = []
-					y = []
-					coefficients = []
-					if (sortedClusters):
-						for point in sortedClusters[-1]:
-							x.append(point[0])
-							y.append(point[1])
-						coeffs = np.polyfit(y, x, degree)
-						x = []
-						y = []
-						coefficients.append(coeffs.tolist())
-
-					slope1 = coefficients[0][0]
-					
-					transposedCoefficients = [1/coefficients[0][0], -coefficients[0][1]]
-
-					#x = np.arange(15)
-					#lineFunc = np.poly1d(transposedCoefficients)
-					#plt.axis('equal')
-					#plt.subplot(122)
-					#plt.plot(x, lineFunc(x))
-					#plt.axis('equal')
-					#plt.savefig('pic')
-
-					angle = math.atan(slope1)	# in radians [0, pi]
-					#print ('angle: %s'%angle)
-
-					setPoint = 0.16
-				
-					( PIDoutput, e0) = pidController(angle, setPoint, e0, Kd = 1, Kp=40) # constant value need to be adjusted
-
-					# Set Speed of Motors
-					initialSpeed = 60
-					rWheelSpeed =  initialSpeed + int(PIDoutput)		
-					lWheelSpeed =  initialSpeed - int(PIDoutput)
+whitePixels = []
+markingPoint = []
+markingPoints = []
 
 
-					if(rWheelSpeed<0):
-						rWheelSpeed = 0
-					elif(lWheelSpeed<0):
-						lWheelSpeed = 0
+for i in range(0,nScanLines):
+		nRow = beginingRow - i * stepSize
+		# binarize a row of an image
+		processedRow = processImage(imgBgr, nRow)
+		# extract white pixels
+		whitePixelsCoordinates = getWhitePixelCoordinates(processedRow)
+		whitePixels.append(whitePixelsCoordinates)
+		# represent the location of white pixels in vehicle coordinate system
+		mappedPoints = getLocalCoordinates(nRow, whitePixelsCoordinates)
+		# whitePixelsCoordinates need to be checked if they actually are marking lines(or their mapped values)
+		markingPoint = getMarkingPoints(mappedPoints)
+		#print('markingPoint %s'%markingPoint)
+		markingPoints.append((markingPoint))
 
-					if(rWheelSpeed>255):
-						rWheelSpeed = 255
-					elif(lWheelSpeed>255):
-						lWheelSpeed = 255
+# clustering: pick a marking line of current row, compare it to the other elements of previous and next ones
+clusters = []
+for line in range(0, nScanLines):	
+	for point in markingPoints[line]:
+		assigned = False
+		for cluster in clusters:
+			if (isInSameCluster(point[0],cluster[-1][0])):
+				cluster.append(point)
+				assigned = True
+		if not assigned:
+			clusters.append([point])
 
-					s.write(struct.pack('>B',rWheelSpeed))
-					s.write(struct.pack('>B',lWheelSpeed))
-					s.write('\n')	
+# sort the clusters in order to label them correctly!
+sortedClusters = sorted(clusters, key=lambda cluster: cluster[0][0])
 
-				else:
-					s.write(struct.pack('>B',0))
-					s.write(struct.pack('>B',0))
-					s.write('\n')	
+plt.subplot(121)
+for cluster in sortedClusters:
+	for point in cluster:
+		plt.scatter(point[0], point[1], s=5, facecolor='0.1', lw = 0)
 
-				dt = time.time() - startTime
-				print('executionTime: %s' %(dt))
-					
+degree = 1
+coeffs = []
+x = []
+y = []
+coefficients = []
+if (sortedClusters):
+	for point in sortedClusters[-1]:
+		x.append(point[0])
+		y.append(point[1])
+	coeffs = np.polyfit(y, x, degree)
+	x = []
+	y = []
+	coefficients.append(coeffs.tolist())
+
+slope1 = coefficients[0][0]
+
+transposedCoefficients = [1/coefficients[0][0], -coefficients[0][1]]
+
+#x = np.arange(15)
+#lineFunc = np.poly1d(transposedCoefficients)
+#plt.axis('equal')
+#plt.subplot(122)
+#plt.plot(x, lineFunc(x))
+#plt.axis('equal')
+#plt.savefig('pic')
+
+angle = math.atan(slope1)	# in radians [0, pi]
+print ('angle: %s'%angle)
+
+setPoint = 0.16
+
+( PIDoutput, e0) = pidController(angle, setPoint, e0, Kd = 1, Kp=40) # constant value need to be adjusted
+print('PID: %s'%PIDoutput)
+# Set Speed of Motors
+initialSpeed = 60
+rWheelSpeed =  initialSpeed + int(PIDoutput)		
+lWheelSpeed =  initialSpeed - int(PIDoutput)
+print('left wheel: %s'%lWheelSpeed)
+print('right wheel: %s'%rWheelSpeed)
+if(rWheelSpeed<0):
+	rWheelSpeed = 0
+elif(lWheelSpeed<0):
+	lWheelSpeed = 0
+
+if(rWheelSpeed>255):
+	rWheelSpeed = 255
+elif(lWheelSpeed>255):
+	lWheelSpeed = 255
+
+#s.write(struct.pack('>B',rWheelSpeed))
+#s.write(struct.pack('>B',lWheelSpeed))
+#s.write('\n')	
+
+dt = time.time() - startTime
+print('executionTime: %s' %(dt))
+
+plt.show()			
 
 
 
+"""
+#-------------result_fileName------------------------------------------
+folderName = "%s_%d" %("log", nScanLines)
+dirName = "%s" %(nScanLines)
+folderPath   = '/home/siaesm/Documents/workplace/p/LaneDetector/log'
+# Create a directory to save the results in
+destPath = os.path.join(folderPath, dirName ) 
+if not os.path.exists(destPath):
+    os.makedirs(destPath)
+
+#-------------result_filePath-----------------------------------------
+logPath = os.path.join(destPath, folderName + "_log.txt" ) 
+
+# Write results to file
+result_file = open(logPath,"w")
+result_file.write('Angle: ' + repr(angle)  +'\n')
+result_file.write('PID:  ' + repr(PIDoutput)  +'\n')
+result_file.write('Exec Time:     ' + repr(dt)       +'\n')
+"""
 
 
 """
@@ -326,5 +325,8 @@ with picamera.PiCamera() as camera:
 			#determinantClusters.append(brokenClusters[-1])
 			determinantClusters.append(solidClusters[0])
 			#print(determinantClusters)
+
+cv2.imshow('image', imgBgr)
+cv2.waitKey(0)
 """
 
