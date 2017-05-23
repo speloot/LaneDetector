@@ -36,25 +36,17 @@ def getWhitePixelCoordinates(row):
 			are turned to 1
 	'''
 	
-	nCol = row.shape[1]
 	nonZeroCoordinates = []
 	beginingPixel = []
 	endPixel = []
-	#binarizedRow = []
 	# Scan a row of a binary image 
-	j = 4 # narrow the frame!?
-	for j in range(nCol-10):
+	for j in xrange(row.shape[1]-1):
 		# Check where transition from 0 to 1 or vice versa occurs!
 		val = int(row[0][j+1]) - int(row[0][j])
-		if (val > 0):
+		if (val != 0):
 			nonZeroCoordinates.append((j))
-			#binarizedRow.append(1)
-		elif (val < 0):
-			nonZeroCoordinates.append((j))
-			#binarizedRow.append(1)
-		#else: binarizedRow.append(0)
 
-	return nonZeroCoordinates #, binarizedRow
+	return nonZeroCoordinates
 
 def getLocalCoordinates(row, points):
 
@@ -62,7 +54,7 @@ def getLocalCoordinates(row, points):
     Transforms points to local coordinate system.
     This assumes camera is mounted at 25 degrees to the vertical, but angle can
     be modified by cam_mount_angle.
-    Input: normalized(row: the row number, column: whitePixelCoordinates)
+    Input:(row: the row number, points: whitePixelCoordinates)
     Output: a list of tuples: points: coordinates of white pixels in cm from camera origin
 
     '''
@@ -102,7 +94,7 @@ def getMarkingPoints(whitePoints):
 	maxLineWidth = 2.7#1.99	#???
 	nWhitePoints = len(whitePoints)
 
-	for m in range(0,nWhitePoints):
+	for m in xrange(0,nWhitePoints):
 		if( m != nWhitePoints-1):
 			width = whitePoints[m+1][0] - whitePoints[m][0]
 			#print('\nwidth :%s'%width)
@@ -157,22 +149,19 @@ def pidController(actualPoint, setPoint, prevError, Kd, Kp):
 	return pidResult, actualError
 
 
-
-global imgBgr
-global camAngle
 u0 = 0
 e0 = 0																		
 pi = 3.14159265
 
 
-imagePath = '/home/siaesm/Pictures/img_02/img032.jpg'
+imagePath = '/home/siaesm/Pictures/XrangePic/foo.jpg'
 imgBgr = cv2.imread(imagePath)
 #cv2.imshow('image', imgBgr)
 #cv2.waitKey(0)
 startTime=time.time()
 	
 				
-nScanLines = 150  					#number of scan lines
+nScanLines = 50  					#number of scan lines
 stepSize = 1	 					#distance between scan lines!?
 beginingRow = imgBgr.shape[0] - 1  	# start from the second row!?
 
@@ -210,12 +199,13 @@ for line in range(0, nScanLines):
 
 # sort the clusters in order to label them correctly!
 sortedClusters = sorted(clusters, key=lambda cluster: cluster[0][0])
-
+print sortedClusters
 plt.subplot(121)
 for cluster in sortedClusters:
 	for point in cluster:
 		plt.scatter(point[0], point[1], s=5, facecolor='0.1', lw = 0)
 
+plt.show()	
 degree = 1
 coeffs = []
 x = []
@@ -272,7 +262,9 @@ elif(lWheelSpeed>255):
 dt = time.time() - startTime
 print('executionTime: %s' %(dt))
 
-plt.show()			
+		
+import timeit
+print(timeit.timeit("test()", setup="from __main__ import test"))
 
 
 

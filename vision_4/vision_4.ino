@@ -13,6 +13,9 @@ int initialSpeed = 100;
 // Create an array of 3
 int incomingByte[3]; 
 
+
+long lastCommandMillis = 0;
+int timeout = 1000;
 void setup()
 {
   Serial3.begin(19200);          // Rpi port
@@ -26,7 +29,7 @@ void setup()
 
 void loop()
 {
-  while(True)
+  while(1)
   {
     if (Serial3.available() >= 3)
     {
@@ -34,15 +37,27 @@ void loop()
       {
         incomingByte[i] = Serial3.read();
         
-        if(incomingByte[i] == '\n')  break;
-        else runCar(0,0);
+        if(incomingByte[i] == '\n')
+        {
+          lastCommandMillis = millis(); 
+          break;
+        }
       }
     }
+    if (millis() - lastCommandMillis > timeout) 
+    {
+      runCar(0,0);
+      Serial.println("no signal from Rpi! \n");
+     }
+     else
+     {
+       runCar(incomingByte[1], incomingByte[0]);
+     }
   }
     
     //Serial.println(incomingByte[0]);
     //Serial.println(incomingByte[1]);
-    runCar(incomingByte[1], incomingByte[0]);
+    
     
 }
 

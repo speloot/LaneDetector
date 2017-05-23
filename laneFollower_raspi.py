@@ -6,7 +6,7 @@ import cv2
 import serial
 import picamera
 import picamera.array
-
+import io
 import math
 import numpy as np
 import time
@@ -14,7 +14,6 @@ import struct
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-
 
 def processImage(image, nRow):
 	'''
@@ -70,9 +69,9 @@ def getLocalCoordinates(row, points):
     Output: a list of tuples: points: coordinates of white pixels in cm from camera origin
 
     '''
-    camAngle = 74.6 	# in degrees
+    camAngle = 78 # 74.6 	# in degrees
     pi = 3.14159265
-    h = 20 				# cm
+    h = 18 				# cm
 
     cam_mount_angle = camAngle * pi/180
     cam_x_fov = 62.2*pi/180
@@ -103,7 +102,7 @@ def getMarkingPoints(whitePoints):
 	'''
 	markings = []
 	minLineWidth = 1.5
-	maxLineWidth = 2.7
+	maxLineWidth = 10
 	nWhitePoints = len(whitePoints)
 
 	for m in range(0,nWhitePoints):
@@ -117,7 +116,7 @@ def getMarkingPoints(whitePoints):
 
 def isInSameCluster(currentPoint, nextPoint):
 
-	margin = 0.7
+	margin = 10
 	rangeResult = False
 	rightOffset = currentPoint + margin
 	leftOffset = currentPoint - margin
@@ -160,12 +159,9 @@ def pidController(actualPoint, setPoint, prevError, Kd, Kp,):
 	return pidResult, actualError
 
 
+s = serial.Serial('/dev/ttyAMA0', 19200) 
+time.sleep(1)
 
-s = serial.Serial('/dev/ttyAMA0', 19200)
-time.sleep(2)
-
-global imgBgr
-global camAngle
 u0 = 0
 e0 = 0																	
 pi = 3.14159265
@@ -174,124 +170,143 @@ pi = 3.14159265
 
 with picamera.PiCamera() as camera:
 	camera.resolution = (640, 480) 
-	camera.exposure_mode = 'sports'
-	time.sleep(3)
+	camera.sensor_mode = 7
+	camera.shutter_speed= 10000
+	time.sleep(2)
+	stream = io.BytesIO()
+	#with picamera.array.PiRGBArray(camera) as stream:
 	
-	while(True):
 
+	for foo in camera.capture_continuous(stream, 'jpeg', True):
 		startTime=time.time()
-	
-		with picamera.array.PiRGBArray(camera) as stream:
-
-				# Use the video-port for fast captures
-				camera.capture(stream, format='bgr', use_video_port=True)
-				imgBgr = stream.array
-				
-				nScanLines = 100  					#number of scan lines
-				stepSize = 1	 					#distance between scan lines!?
-				beginingRow = imgBgr.shape[0] - 1  	# start from the second row!?
+		stream.seek(0)
+		imgBgr =  cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), 1)
+		#cv2.imwrite('image.png', imgBgr)
+		nScanLines = 10  					#number of scan lines
+		stepSize = 1	 					#distance between scan lines!?
+		beginingRow = imgBgr.shape[0] - 1  	# start from the second row!?
 
 
-				whitePixels = []
-				markingPoint = []
-				markingPoints = []
-				
+		whitePixels = []
+		markingPoint = []
+		markingPoints = []
+		
+		
+		for i in range(0,nScanLines):
+			nRow = beginingRow - i * stepSize
+			# binarize a row of an image
+			processedRow = processImage(imgBgr, nRow)
+			# extract white pixels
+			( whitePixelsCoordinates, binRow ) = getWhitePixelCoordinates(processedRow)
+			whitePixels.append(whitePixelsCoordinates)
+			# represent the location of white pixels in vehicle coordinate system
+			mappedPoints = getLocalCoordinates(nRow, whitePixelsCoordinates)
+			# whitePixelsCoordinates need to be checked if they actually are marking lines(or their mapped values)
+			markingPoint = getMarkingPoints(mappedPoints)
+			markingPoints.append((markingPoint))
 
-				for i in range(0,nScanLines):
-						nRow = beginingRow - i * stepSize
-						# binarize a row of an image
-						processedRow = processImage(imgBgr, nRow)
-						# extract white pixels
-						( whitePixelsCoordinates, binRow ) = getWhitePixelCoordinates(processedRow)
-						whitePixels.append(whitePixelsCoordinates)
-						# represent the location of white pixels in vehicle coordinate system
-						mappedPoints = getLocalCoordinates(nRow, whitePixelsCoordinates)
-						# whitePixelsCoordinates need to be checked if they actually are marking lines(or their mapped values)
-						markingPoint = getMarkingPoints(mappedPoints)
-						markingPoints.append((markingPoint))
+		
+		# clustering: pick a marking line of current row, compare it to the other elements of previous and next ones
+		clusters = []
+		
+		if (markingPoints!=[]):
+			
+			for line in range(0, nScanLines):	
+				for point in markingPoints[line]:
+					assigned = False
+					for cluster in clusters:
+						if (isInSameCluster(point[0],cluster[-1][0])):
+							cluster.append(point)
+							assigned = True
+					if not assigned:
+						clusters.append([point])
+		else:
+			s.write(struct.pack('>B',0))
+			s.write(struct.pack('>B',0))
+			s.write('\n')
+			continue	# !!!
+		
+		
+		if (clusters != []):
+			# sort the clusters in order to label them correctly!
+			sortedClusters = sorted(clusters, key=lambda cluster: cluster[0][0])
+			#dt_loadImage = time.time() - startTime
+			#print 'dt_loadImage:%s' %dt_loadImage
+			"""
+			plt.subplot(121)
+			for cluster in sortedClusters:
+				for point in cluster:
+					plt.scatter(point[0], point[1], s=5, facecolor='0.1', lw = 0)
+			"""
+			degree = 1
+			coeffs = []
+			x = []
+			y = []
+			coefficients = []
+			if (sortedClusters):
+				for point in sortedClusters[-1]:
+					x.append(point[0])
+					y.append(point[1])
+				coeffs = np.polyfit(y, x, degree)
+				x = []
+				y = []
+				coefficients.append(coeffs.tolist())
 
-				# clustering: pick a marking line of current row, compare it to the other elements of previous and next ones
-				clusters = []
-				if (markingPoints!=[]):
-					
-					for line in range(0, nScanLines):	
-						for point in markingPoints[line]:
-							assigned = False
-							for cluster in clusters:
-								if (isInSameCluster(point[0],cluster[-1][0])):
-									cluster.append(point)
-									assigned = True
-							if not assigned:
-								clusters.append([point])
+			slope1 = coefficients[0][0]
+			print 'slope: %s'%slope1
+			transposedCoefficients = [1/coefficients[0][0], -coefficients[0][1]]
+			
+			x = np.arange(15)
+			lineFunc = np.poly1d(transposedCoefficients)
+			"""
+			plt.axis('equal')
+			plt.subplot(122)
+			plt.plot(x, lineFunc(x))
+			plt.axis('equal')
+			plt.savefig('pic')
+			print 'Saved!'
+			"""
+			angle = math.atan(slope1)	# in radians [0, pi]
+			print 'angle= %s' %angle
+			( PIDoutput, e0) = pidController(angle, 0.2, e0, Kd = 80, Kp=130) 
+			# Set the Speed of Motors
+			initialSpeed = 80
+			rWheelSpeed =  initialSpeed + int(PIDoutput)		
+			lWheelSpeed =  initialSpeed - int(PIDoutput)
+			print(rWheelSpeed)	
+			print(lWheelSpeed)
+			if(rWheelSpeed<0):
+				rWheelSpeed = 0
+			elif(lWheelSpeed<0):
+				lWheelSpeed = 0
 
-					# sort the clusters in order to label them correctly!
-					sortedClusters = sorted(clusters, key=lambda cluster: cluster[0][0])
-					"""
-					plt.subplot(121)
-					for cluster in sortedClusters:
-						for point in cluster:
-							plt.scatter(point[0], point[1], s=5, facecolor='0.1', lw = 0)
-					"""
-					degree = 1
-					coeffs = []
-					x = []
-					y = []
-					coefficients = []
-					if (sortedClusters):
-						for point in sortedClusters[-1]:
-							x.append(point[0])
-							y.append(point[1])
-						coeffs = np.polyfit(y, x, degree)
-						x = []
-						y = []
-						coefficients.append(coeffs.tolist())
+			if(rWheelSpeed>255):
+				rWheelSpeed = 255
+			elif(lWheelSpeed>255):
+				lWheelSpeed = 255
 
-					slope1 = coefficients[0][0]
-					
-					transposedCoefficients = [1/coefficients[0][0], -coefficients[0][1]]
+			#lWheelSpeed = 0
+			#rWheelSpeed = 0
 
-					#x = np.arange(15)
-					#lineFunc = np.poly1d(transposedCoefficients)
-					#plt.axis('equal')
-					#plt.subplot(122)
-					#plt.plot(x, lineFunc(x))
-					#plt.axis('equal')
-					#plt.savefig('pic')
+			s.write(struct.pack('>B',rWheelSpeed))
+			s.write(struct.pack('>B',lWheelSpeed))
+			s.write('\n')	
 
-					angle = math.atan(slope1)	# in radians [0, pi]
-					#print ('angle: %s'%angle)
-
-					setPoint = 0.16
-				
-					( PIDoutput, e0) = pidController(angle, setPoint, e0, Kd = 1, Kp=40) # constant value need to be adjusted
-
-					# Set Speed of Motors
-					initialSpeed = 60
-					rWheelSpeed =  initialSpeed + int(PIDoutput)		
-					lWheelSpeed =  initialSpeed - int(PIDoutput)
+		else:
+			s.write(struct.pack('>B',0))
+			s.write(struct.pack('>B',0))
+			s.write('\n')	
+		
 
 
-					if(rWheelSpeed<0):
-						rWheelSpeed = 0
-					elif(lWheelSpeed<0):
-						lWheelSpeed = 0
+		stream.seek(0)
+		stream.truncate()
 
-					if(rWheelSpeed>255):
-						rWheelSpeed = 255
-					elif(lWheelSpeed>255):
-						lWheelSpeed = 255
+		dt_all = time.time() - startTime
+		print('executionTime: %s' %(dt_all))	
+		
 
-					s.write(struct.pack('>B',rWheelSpeed))
-					s.write(struct.pack('>B',lWheelSpeed))
-					s.write('\n')	
 
-				else:
-					s.write(struct.pack('>B',0))
-					s.write(struct.pack('>B',0))
-					s.write('\n')	
-
-				dt = time.time() - startTime
-				print('executionTime: %s' %(dt))
 					
 
 
