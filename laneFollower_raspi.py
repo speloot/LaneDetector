@@ -4,9 +4,11 @@
 from __future__ import division
 import cv2
 import serial
+import socket
 import picamera
 import picamera.array
 import io
+import pickle
 import math
 import numpy as np
 import time
@@ -43,21 +45,20 @@ def getWhitePixelCoordinates(row):
 	nonZeroCoordinates = []
 	beginingPixel = []
 	endPixel = []
-	binarizedRow = []
+	#binarizedRow = []
 	# Scan a row of a binary image 
-	j = 4 # narrow the frame!?
-	for j in range(nCol-10):
+	for j in range(nCol-1):
 		# Check where transition from 0 to 1 or vice versa occurs!
 		val = int(row[0][j+1]) - int(row[0][j])
 		if (val > 0):
 			nonZeroCoordinates.append((j))
-			binarizedRow.append(1)
+			#binarizedRow.append(1)
 		elif (val < 0):
 			nonZeroCoordinates.append((j))
-			binarizedRow.append(1)
-		else: binarizedRow.append(0)
+			#binarizedRow.append(1)
+		#else: binarizedRow.append(0)
 
-	return nonZeroCoordinates, binarizedRow
+	return nonZeroCoordinates
 
 def getLocalCoordinates(row, points):
 
@@ -160,7 +161,11 @@ def pidController(actualPoint, setPoint, prevError, Kd, Kp,):
 
 
 s = serial.Serial('/dev/ttyAMA0', 19200) 
-time.sleep(1)
+dataSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+dataSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+dataSocket.connect(('192.168.75.96', 7798))
+
+dataFile= dataSocket.makefile('ab')
 
 u0 = 0
 e0 = 0																	
@@ -182,7 +187,7 @@ with picamera.PiCamera() as camera:
 		stream.seek(0)
 		imgBgr =  cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), 1)
 		#cv2.imwrite('image.png', imgBgr)
-		nScanLines = 10  					#number of scan lines
+		nScanLines = 20  					#number of scan lines
 		stepSize = 1	 					#distance between scan lines!?
 		beginingRow = imgBgr.shape[0] - 1  	# start from the second row!?
 
@@ -190,41 +195,29 @@ with picamera.PiCamera() as camera:
 		whitePixels = []
 		markingPoint = []
 		markingPoints = []
-		
+		clusters = []
 		
 		for i in range(0,nScanLines):
 			nRow = beginingRow - i * stepSize
 			# binarize a row of an image
 			processedRow = processImage(imgBgr, nRow)
 			# extract white pixels
-			( whitePixelsCoordinates, binRow ) = getWhitePixelCoordinates(processedRow)
-			whitePixels.append(whitePixelsCoordinates)
+			whitePixelsCoordinates = getWhitePixelCoordinates(processedRow)
+			#whitePixels.append(whitePixelsCoordinates)
 			# represent the location of white pixels in vehicle coordinate system
 			mappedPoints = getLocalCoordinates(nRow, whitePixelsCoordinates)
 			# whitePixelsCoordinates need to be checked if they actually are marking lines(or their mapped values)
 			markingPoint = getMarkingPoints(mappedPoints)
 			markingPoints.append((markingPoint))
-
-		
-		# clustering: pick a marking line of current row, compare it to the other elements of previous and next ones
-		clusters = []
-		
-		if (markingPoints!=[]):
-			
-			for line in range(0, nScanLines):	
-				for point in markingPoints[line]:
-					assigned = False
-					for cluster in clusters:
-						if (isInSameCluster(point[0],cluster[-1][0])):
-							cluster.append(point)
-							assigned = True
-					if not assigned:
-						clusters.append([point])
-		else:
-			s.write(struct.pack('>B',0))
-			s.write(struct.pack('>B',0))
-			s.write('\n')
-			continue	# !!!
+			# clustering: pick a marking line of current row, compare it to the other elements of previous and next ones
+			for point in markingPoint:
+				assigned = False
+				for cluster in clusters:
+					if (isInSameCluster(point[0],cluster[-1][0])):
+						cluster.append(point)
+						assigned = True
+				if not assigned:
+					clusters.append([point])
 		
 		
 		if (clusters != []):
@@ -238,6 +231,13 @@ with picamera.PiCamera() as camera:
 				for point in cluster:
 					plt.scatter(point[0], point[1], s=5, facecolor='0.1', lw = 0)
 			"""
+			dataString = pickle.dumps(sortedClusters)
+
+			dataFile.write(struct.pack('<L', len(dataString)))
+			dataFile.flush()
+			dataFile.write(dataString)
+			dataFile.flush()
+			
 			degree = 1
 			coeffs = []
 			x = []
@@ -254,11 +254,11 @@ with picamera.PiCamera() as camera:
 
 			slope1 = coefficients[0][0]
 			print 'slope: %s'%slope1
+			"""
 			transposedCoefficients = [1/coefficients[0][0], -coefficients[0][1]]
 			
 			x = np.arange(15)
 			lineFunc = np.poly1d(transposedCoefficients)
-			"""
 			plt.axis('equal')
 			plt.subplot(122)
 			plt.plot(x, lineFunc(x))
@@ -270,7 +270,7 @@ with picamera.PiCamera() as camera:
 			print 'angle= %s' %angle
 			( PIDoutput, e0) = pidController(angle, 0.2, e0, Kd = 80, Kp=130) 
 			# Set the Speed of Motors
-			initialSpeed = 80
+			initialSpeed = 95
 			rWheelSpeed =  initialSpeed + int(PIDoutput)		
 			lWheelSpeed =  initialSpeed - int(PIDoutput)
 			print(rWheelSpeed)	
@@ -285,14 +285,15 @@ with picamera.PiCamera() as camera:
 			elif(lWheelSpeed>255):
 				lWheelSpeed = 255
 
-			#lWheelSpeed = 0
-			#rWheelSpeed = 0
+			lWheelSpeed = 0
+			rWheelSpeed = 0
 
 			s.write(struct.pack('>B',rWheelSpeed))
 			s.write(struct.pack('>B',lWheelSpeed))
 			s.write('\n')	
 
 		else:
+			print("No Marking Point's Found!")
 			s.write(struct.pack('>B',0))
 			s.write(struct.pack('>B',0))
 			s.write('\n')	

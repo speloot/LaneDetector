@@ -154,7 +154,7 @@ e0 = 0
 pi = 3.14159265
 
 
-imagePath = '/home/siaesm/Pictures/XrangePic/foo.jpg'
+imagePath = '/home/siaesm/Pictures/img_02/img003.jpg'
 imgBgr = cv2.imread(imagePath)
 #cv2.imshow('image', imgBgr)
 #cv2.waitKey(0)
@@ -169,7 +169,7 @@ beginingRow = imgBgr.shape[0] - 1  	# start from the second row!?
 whitePixels = []
 markingPoint = []
 markingPoints = []
-
+clusters = []
 
 for i in range(0,nScanLines):
 		nRow = beginingRow - i * stepSize
@@ -182,24 +182,31 @@ for i in range(0,nScanLines):
 		mappedPoints = getLocalCoordinates(nRow, whitePixelsCoordinates)
 		# whitePixelsCoordinates need to be checked if they actually are marking lines(or their mapped values)
 		markingPoint = getMarkingPoints(mappedPoints)
+
 		#print('markingPoint %s'%markingPoint)
-		markingPoints.append((markingPoint))
+		#markingPoints.append((markingPoint))
 
 # clustering: pick a marking line of current row, compare it to the other elements of previous and next ones
-clusters = []
-for line in range(0, nScanLines):	
-	for point in markingPoints[line]:
-		assigned = False
-		for cluster in clusters:
-			if (isInSameCluster(point[0],cluster[-1][0])):
-				cluster.append(point)
-				assigned = True
-		if not assigned:
-			clusters.append([point])
 
+#for line in range(0, nScanLines):	
+		for point in markingPoint:
+			assigned = False
+			for cluster in clusters:
+				if (isInSameCluster(point[0],cluster[-1][0])):
+					cluster.append(point)
+					assigned = True
+			if not assigned:
+				clusters.append([point])
+
+print clusters
+
+
+"""
 # sort the clusters in order to label them correctly!
 sortedClusters = sorted(clusters, key=lambda cluster: cluster[0][0])
 print sortedClusters
+
+
 plt.subplot(121)
 for cluster in sortedClusters:
 	for point in cluster:
@@ -221,6 +228,8 @@ if (sortedClusters):
 	coefficients.append(coeffs.tolist())
 
 slope1 = coefficients[0][0]
+
+
 
 transposedCoefficients = [1/coefficients[0][0], -coefficients[0][1]]
 
@@ -262,13 +271,8 @@ elif(lWheelSpeed>255):
 dt = time.time() - startTime
 print('executionTime: %s' %(dt))
 
-		
-import timeit
-print(timeit.timeit("test()", setup="from __main__ import test"))
 
 
-
-"""
 #-------------result_fileName------------------------------------------
 folderName = "%s_%d" %("log", nScanLines)
 dirName = "%s" %(nScanLines)
