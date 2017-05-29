@@ -103,7 +103,7 @@ def getMarkingPoints(whitePoints):
 	'''
 	markings = []
 	minLineWidth = 1.5
-	maxLineWidth = 10
+	maxLineWidth = 3s.2
 	nWhitePoints = len(whitePoints)
 
 	for m in range(0,nWhitePoints):
@@ -117,7 +117,7 @@ def getMarkingPoints(whitePoints):
 
 def isInSameCluster(currentPoint, nextPoint):
 
-	margin = 10
+	margin = 5
 	rangeResult = False
 	rightOffset = currentPoint + margin
 	leftOffset = currentPoint - margin
@@ -170,7 +170,7 @@ dataFile= dataSocket.makefile('ab')
 u0 = 0
 e0 = 0																	
 pi = 3.14159265
-
+sortedClusters = []
 
 
 with picamera.PiCamera() as camera:
@@ -187,8 +187,8 @@ with picamera.PiCamera() as camera:
 		stream.seek(0)
 		imgBgr =  cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), 1)
 		#cv2.imwrite('image.png', imgBgr)
-		nScanLines = 20  					#number of scan lines
-		stepSize = 1	 					#distance between scan lines!?
+		nScanLines = 25  					#number of scan lines
+		stepSize = 4	 					#distance between scan lines!?
 		beginingRow = imgBgr.shape[0] - 1  	# start from the second row!?
 
 
@@ -222,16 +222,14 @@ with picamera.PiCamera() as camera:
 		
 		if (clusters != []):
 			# sort the clusters in order to label them correctly!
-			sortedClusters = sorted(clusters, key=lambda cluster: cluster[0][0])
-			#dt_loadImage = time.time() - startTime
-			#print 'dt_loadImage:%s' %dt_loadImage
-			"""
-			plt.subplot(121)
-			for cluster in sortedClusters:
-				for point in cluster:
-					plt.scatter(point[0], point[1], s=5, facecolor='0.1', lw = 0)
-			"""
-			dataString = pickle.dumps(sortedClusters)
+			for cluster in clusters:
+				if (len(cluster) >= 0.7*nScanLines):
+					sortedClusters.append(cluster)
+					#print 'deleted!'
+
+			lanes = sorted(sortedClusters, key=lambda cluster: cluster[0][0])
+			
+			dataString = pickle.dumps(lanes)
 
 			dataFile.write(struct.pack('<L', len(dataString)))
 			dataFile.flush()
@@ -240,11 +238,10 @@ with picamera.PiCamera() as camera:
 			
 			degree = 1
 			coeffs = []
-			x = []
-			y = []
+			x, y = [], []
 			coefficients = []
-			if (sortedClusters):
-				for point in sortedClusters[-1]:
+			if (lanes):
+				for point in lanes[-1]:
 					x.append(point[0])
 					y.append(point[1])
 				coeffs = np.polyfit(y, x, degree)
