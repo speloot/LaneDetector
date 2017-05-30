@@ -27,6 +27,7 @@ def processImage(image, nRow):
 	roi = image[ nRow : nRow+1, 0 : image.shape[1] ] 
 
 	gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+	#blured = cv2.GaussianBlur(gray, (15, 15), 0)
 	(thresh, bw) = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
 	processedRow = bw
 	return processedRow
@@ -103,7 +104,7 @@ def getMarkingPoints(whitePoints):
 	'''
 	markings = []
 	minLineWidth = 1.5
-	maxLineWidth = 3.2
+	maxLineWidth = 2.5
 	nWhitePoints = len(whitePoints)
 
 	for m in range(0,nWhitePoints):
@@ -142,7 +143,7 @@ def isConcatable(currentPoint, nextPoint):
 
 	return rangeResult
 
-def pidController(actualPoint, setPoint, prevError, Kd, Kp,):
+def pidController(actualPoint, setPoint, prevError, Kd, Kp):
 	'''
 	Calculate System Input using a "PID Controller"
 
@@ -188,7 +189,7 @@ with picamera.PiCamera() as camera:
 		imgBgr =  cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), 1)
 		#cv2.imwrite('image.png', imgBgr)
 		nScanLines = 30 					#number of scan lines
-		stepSize = 	 5					#distance between scan lines!?
+		stepSize = 	 2					#distance between scan lines!?
 		beginingRow = imgBgr.shape[0] - 50  	# start from the second row!?
 
 		markingPoints = []
@@ -258,9 +259,9 @@ with picamera.PiCamera() as camera:
 
 			angle = math.atan(slope1)	# in radians [0, pi]
 			print('angle= %d' %(angle*(180/3.1415)))
-			( PIDoutput, e0) = pidController(angle, 0.0, e0, Kd = 1, Kp=120) 
+			( PIDoutput, e0) = pidController(angle, 0, e0, Kd = 1, Kp=170) 
 			# Set the Speed of Motors
-			initialSpeed = 95
+			initialSpeed = 80
 
 			rWheelSpeed =  initialSpeed + int(PIDoutput)		
 			lWheelSpeed =  initialSpeed - int(PIDoutput)
@@ -277,8 +278,8 @@ with picamera.PiCamera() as camera:
 			elif(lWheelSpeed>255):
 				lWheelSpeed = 255
 
-			lWheelSpeed = 0
-			rWheelSpeed = 0
+			#lWheelSpeed = 0
+			#rWheelSpeed = 0
 
 			s.write(struct.pack('>B',rWheelSpeed))
 			s.write(struct.pack('>B',lWheelSpeed))
@@ -290,8 +291,6 @@ with picamera.PiCamera() as camera:
 			s.write(struct.pack('>B',0))
 			s.write('\n')
 		
-
-
 		stream.seek(0)
 		stream.truncate()
 		
