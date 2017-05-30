@@ -70,9 +70,9 @@ def getLocalCoordinates(row, points):
     Output: a list of tuples: points: coordinates of white pixels in cm from camera origin
 
     '''
-    camAngle = 78 # 74.6 	# in degrees
+    camAngle = 70.0 #78 # 74.6 	# in degrees
     pi = 3.14159265
-    h = 18 				# cm
+    h = 20 				# cm
 
     cam_mount_angle = camAngle * pi/180
     cam_x_fov = 62.2*pi/180
@@ -103,7 +103,7 @@ def getMarkingPoints(whitePoints):
 	'''
 	markings = []
 	minLineWidth = 1.5
-	maxLineWidth = 3s.2
+	maxLineWidth = 3.2
 	nWhitePoints = len(whitePoints)
 
 	for m in range(0,nWhitePoints):
@@ -170,7 +170,7 @@ dataFile= dataSocket.makefile('ab')
 u0 = 0
 e0 = 0																	
 pi = 3.14159265
-sortedClusters = []
+
 
 
 with picamera.PiCamera() as camera:
@@ -187,17 +187,15 @@ with picamera.PiCamera() as camera:
 		stream.seek(0)
 		imgBgr =  cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), 1)
 		#cv2.imwrite('image.png', imgBgr)
-		nScanLines = 25  					#number of scan lines
-		stepSize = 4	 					#distance between scan lines!?
-		beginingRow = imgBgr.shape[0] - 1  	# start from the second row!?
+		nScanLines = 20 					#number of scan lines
+		stepSize = 	 3					#distance between scan lines!?
+		beginingRow = imgBgr.shape[0] - 50  	# start from the second row!?
 
-
-		whitePixels = []
-		markingPoint = []
 		markingPoints = []
 		clusters = []
 		
 		for i in range(0,nScanLines):
+
 			nRow = beginingRow - i * stepSize
 			# binarize a row of an image
 			processedRow = processImage(imgBgr, nRow)
@@ -209,6 +207,7 @@ with picamera.PiCamera() as camera:
 			# whitePixelsCoordinates need to be checked if they actually are marking lines(or their mapped values)
 			markingPoint = getMarkingPoints(mappedPoints)
 			markingPoints.append((markingPoint))
+			
 			# clustering: pick a marking line of current row, compare it to the other elements of previous and next ones
 			for point in markingPoint:
 				assigned = False
@@ -218,77 +217,75 @@ with picamera.PiCamera() as camera:
 						assigned = True
 				if not assigned:
 					clusters.append([point])
-		
+		print('len clusters: %s'%len(clusters))
 		
 		if (clusters != []):
-			# sort the clusters in order to label them correctly!
+
+			sortedClusters = []
 			for cluster in clusters:
 				if (len(cluster) >= 0.7*nScanLines):
 					sortedClusters.append(cluster)
-					#print 'deleted!'
+					
+			if (len(sortedClusters)!=0):
 
-			lanes = sorted(sortedClusters, key=lambda cluster: cluster[0][0])
-			
-			dataString = pickle.dumps(lanes)
+				lanes = sorted(sortedClusters, key=lambda cluster:cluster ) #cluster[0][0]
+				clusters = []
+				dataString = pickle.dumps(lanes)
 
-			dataFile.write(struct.pack('<L', len(dataString)))
-			dataFile.flush()
-			dataFile.write(dataString)
-			dataFile.flush()
-			
-			degree = 1
-			coeffs = []
-			x, y = [], []
-			coefficients = []
-			if (lanes):
-				for point in lanes[-1]:
-					x.append(point[0])
-					y.append(point[1])
-				coeffs = np.polyfit(y, x, degree)
-				x = []
-				y = []
-				coefficients.append(coeffs.tolist())
+				dataFile.write(struct.pack('<L', len(dataString)))
+				dataFile.flush()
+				dataFile.write(dataString)
+				dataFile.flush()
+				
+				degree = 1
+				coeffs = []
+				x, y = [], []
+				coefficients = []
+				if (lanes):
+					for point in lanes[-1]:
+						x.append(point[0])
+						y.append(point[1])
+					coeffs = np.polyfit(y, x, degree)
+					x = []
+					y = []
+					coefficients.append(coeffs.tolist())
 
-			slope1 = coefficients[0][0]
-			print 'slope: %s'%slope1
-			"""
-			transposedCoefficients = [1/coefficients[0][0], -coefficients[0][1]]
-			
-			x = np.arange(15)
-			lineFunc = np.poly1d(transposedCoefficients)
-			plt.axis('equal')
-			plt.subplot(122)
-			plt.plot(x, lineFunc(x))
-			plt.axis('equal')
-			plt.savefig('pic')
-			print 'Saved!'
-			"""
-			angle = math.atan(slope1)	# in radians [0, pi]
-			print 'angle= %s' %angle
-			( PIDoutput, e0) = pidController(angle, 0.2, e0, Kd = 80, Kp=130) 
-			# Set the Speed of Motors
-			initialSpeed = 95
-			rWheelSpeed =  initialSpeed + int(PIDoutput)		
-			lWheelSpeed =  initialSpeed - int(PIDoutput)
-			print(rWheelSpeed)	
-			print(lWheelSpeed)
-			if(rWheelSpeed<0):
-				rWheelSpeed = 0
-			elif(lWheelSpeed<0):
-				lWheelSpeed = 0
+				slope1 = coefficients[0][0]
+				print('slope: %s'%slope1)
 
-			if(rWheelSpeed>255):
-				rWheelSpeed = 255
-			elif(lWheelSpeed>255):
-				lWheelSpeed = 255
+				angle = math.atan(slope1)	# in radians [0, pi]
+				print('angle= %d' %(angle*(180/3.1415)))
+				( PIDoutput, e0) = pidController(angle, 0.0, e0, Kd = 1, Kp=90) 
+				# Set the Speed of Motors
+				initialSpeed = 80
 
-			lWheelSpeed = 0
-			rWheelSpeed = 0
+				rWheelSpeed =  initialSpeed + int(PIDoutput)		
+				lWheelSpeed =  initialSpeed - int(PIDoutput)
 
-			s.write(struct.pack('>B',rWheelSpeed))
-			s.write(struct.pack('>B',lWheelSpeed))
-			s.write('\n')	
+				print('right wheel speed: %s'%rWheelSpeed)	
+				print('left wheel speed: %s'%lWheelSpeed)
+				if(rWheelSpeed<0):
+					rWheelSpeed = 0
+				elif(lWheelSpeed<0):
+					lWheelSpeed = 0
 
+				if(rWheelSpeed>255):
+					rWheelSpeed = 255
+				elif(lWheelSpeed>255):
+					lWheelSpeed = 255
+
+				#lWheelSpeed = 0
+				#rWheelSpeed = 0
+
+				s.write(struct.pack('>B',rWheelSpeed))
+				s.write(struct.pack('>B',lWheelSpeed))
+				s.write('\n')	
+
+			else:
+				print("No Marking Point's Found!")
+				s.write(struct.pack('>B',0))
+				s.write(struct.pack('>B',0))
+				s.write('\n')
 		else:
 			print("No Marking Point's Found!")
 			s.write(struct.pack('>B',0))
@@ -299,7 +296,7 @@ with picamera.PiCamera() as camera:
 
 		stream.seek(0)
 		stream.truncate()
-
+		
 		dt_all = time.time() - startTime
 		print('executionTime: %s' %(dt_all))	
 		
