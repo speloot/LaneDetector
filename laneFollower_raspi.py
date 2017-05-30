@@ -187,8 +187,8 @@ with picamera.PiCamera() as camera:
 		stream.seek(0)
 		imgBgr =  cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), 1)
 		#cv2.imwrite('image.png', imgBgr)
-		nScanLines = 20 					#number of scan lines
-		stepSize = 	 3					#distance between scan lines!?
+		nScanLines = 30 					#number of scan lines
+		stepSize = 	 5					#distance between scan lines!?
 		beginingRow = imgBgr.shape[0] - 50  	# start from the second row!?
 
 		markingPoints = []
@@ -218,79 +218,77 @@ with picamera.PiCamera() as camera:
 				if not assigned:
 					clusters.append([point])
 		print('len clusters: %s'%len(clusters))
-		
-		if (clusters != []):
+		sortedClusters = sorted(clusters, key=lambda cluster:cluster[0][0] )
+		clusters = []
+		if (sortedClusters != []):
 
-			sortedClusters = []
-			for cluster in clusters:
-				if (len(cluster) >= 0.7*nScanLines):
-					sortedClusters.append(cluster)
-					
-			if (len(sortedClusters)!=0):
+		#sortedClusters = []
+		#for cluster in clusters:
+		#	print('len cluster!!: %s'%len(cluster))
+		#	if (len(cluster) >= 0.4*nScanLines):
+		#		sortedClusters.append([cluster])
+		#print('len sortedClusters: %s'%len(sortedClusters))		
+		#if (len(sortedClusters)!=0):
 
-				lanes = sorted(sortedClusters, key=lambda cluster:cluster ) #cluster[0][0]
-				clusters = []
-				dataString = pickle.dumps(lanes)
+			 
+			#print('last cluster: %s' %lanes[-1])
+			
+			dataString = pickle.dumps(sortedClusters)
 
-				dataFile.write(struct.pack('<L', len(dataString)))
-				dataFile.flush()
-				dataFile.write(dataString)
-				dataFile.flush()
-				
-				degree = 1
-				coeffs = []
-				x, y = [], []
-				coefficients = []
-				if (lanes):
-					for point in lanes[-1]:
-						x.append(point[0])
-						y.append(point[1])
-					coeffs = np.polyfit(y, x, degree)
-					x = []
-					y = []
-					coefficients.append(coeffs.tolist())
+			dataFile.write(struct.pack('<L', len(dataString)))
+			dataFile.flush()
+			dataFile.write(dataString)
+			dataFile.flush()
+			
+			degree = 1
+			coeffs = []
+			x, y = [], []
+			coefficients = []
+			if (sortedClusters):
+				for point in sortedClusters[-1]:
+					x.append(point[0])
+					y.append(point[1])
+				coeffs = np.polyfit(y, x, degree)
+				x = []
+				y = []
+				coefficients.append(coeffs.tolist())
 
-				slope1 = coefficients[0][0]
-				print('slope: %s'%slope1)
+			slope1 = coefficients[0][0]
+			print('slope: %s'%slope1)
 
-				angle = math.atan(slope1)	# in radians [0, pi]
-				print('angle= %d' %(angle*(180/3.1415)))
-				( PIDoutput, e0) = pidController(angle, 0.0, e0, Kd = 1, Kp=90) 
-				# Set the Speed of Motors
-				initialSpeed = 80
+			angle = math.atan(slope1)	# in radians [0, pi]
+			print('angle= %d' %(angle*(180/3.1415)))
+			( PIDoutput, e0) = pidController(angle, 0.0, e0, Kd = 1, Kp=120) 
+			# Set the Speed of Motors
+			initialSpeed = 95
 
-				rWheelSpeed =  initialSpeed + int(PIDoutput)		
-				lWheelSpeed =  initialSpeed - int(PIDoutput)
+			rWheelSpeed =  initialSpeed + int(PIDoutput)		
+			lWheelSpeed =  initialSpeed - int(PIDoutput)
 
-				print('right wheel speed: %s'%rWheelSpeed)	
-				print('left wheel speed: %s'%lWheelSpeed)
-				if(rWheelSpeed<0):
-					rWheelSpeed = 0
-				elif(lWheelSpeed<0):
-					lWheelSpeed = 0
+			print('right wheel speed: %s'%rWheelSpeed)	
+			print('left wheel speed: %s'%lWheelSpeed)
+			if(rWheelSpeed<0):
+				rWheelSpeed = 0
+			elif(lWheelSpeed<0):
+				lWheelSpeed = 0
 
-				if(rWheelSpeed>255):
-					rWheelSpeed = 255
-				elif(lWheelSpeed>255):
-					lWheelSpeed = 255
+			if(rWheelSpeed>255):
+				rWheelSpeed = 255
+			elif(lWheelSpeed>255):
+				lWheelSpeed = 255
 
-				#lWheelSpeed = 0
-				#rWheelSpeed = 0
+			lWheelSpeed = 0
+			rWheelSpeed = 0
 
-				s.write(struct.pack('>B',rWheelSpeed))
-				s.write(struct.pack('>B',lWheelSpeed))
-				s.write('\n')	
-
-			else:
-				print("No Marking Point's Found!")
-				s.write(struct.pack('>B',0))
-				s.write(struct.pack('>B',0))
-				s.write('\n')
-		else:
-			print("No Marking Point's Found!")
-			s.write(struct.pack('>B',0))
-			s.write(struct.pack('>B',0))
+			s.write(struct.pack('>B',rWheelSpeed))
+			s.write(struct.pack('>B',lWheelSpeed))
 			s.write('\n')	
+
+		else:
+			print("No Sorted Cluster Found!")
+			s.write(struct.pack('>B',0))
+			s.write(struct.pack('>B',0))
+			s.write('\n')
 		
 
 
