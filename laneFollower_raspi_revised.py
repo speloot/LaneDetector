@@ -1,12 +1,11 @@
 #!/usr/bin/python
 # -*- coding: iso-8859-15 -*-
-
 from __future__ import division
 import cv2
 import serial
 import socket
-#import picamera
-#import picamera.array
+import picamera
+import picamera.array
 import io
 import pickle
 import math
@@ -14,7 +13,7 @@ import numpy as np
 import time
 import struct
 import matplotlib
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 def processImage(image, nRow):
@@ -85,8 +84,8 @@ def getLocalCoordinates(pointLists):
     Transforms points to local coordinate system.
     This assumes camera is mounted at 25 degrees to the vertical, but angle can
     be modified by cam_mount_angle.
-    Input: normalized(row: the row number, column: whitePixelCoordinates)
-    Output: a list of tuples: points: coordinates of white pixels in cm from camera origin
+    Input: a list of lists of tuples composed of whitePixelCoordinates)
+    Output: a list of lists of tuples, points: coordinates of white pixels in cm from camera origin
 
     '''
     camAngle = 70.0 #78 # 74.6 	# in degrees
@@ -96,11 +95,11 @@ def getLocalCoordinates(pointLists):
     cam_mount_angle = camAngle * pi/180
     cam_x_fov = 62.2*pi/180
     cam_y_fov = 48.8*pi/180
-    xPositions = []
-    yPositions = []
+    
     localPoints = []
-    localPoint = []
+  
     for pointList in pointLists:
+    	localPoint = []
     	for p in pointList:
 	        phi_x = ((p[0]/640)-0.5)*cam_x_fov
 	        phi_y = -((p[1]/480)-0.5)*cam_y_fov
@@ -112,62 +111,115 @@ def getLocalCoordinates(pointLists):
 	    	localPoint.append((x,y))
 	localPoints.append(localPoint)
 
+
     return localPoints
+def pidController(actualPoint, setPoint, Kp):
+	'''
+	Calculate System Input using a "PID Controller"
+	'''
+	return Kp * (setPoint - actualPoint)
 
 
-imagePath = '/home/siaesm/Pictures/img_02/img031.jpg'
-imgBgr = cv2.imread(imagePath)
-#cv2.imshow('image', imgBgr)
-#cv2.waitKey(0)
-startTime=time.time()
-	
-				
-nScanLines = 300	#number of scan lines
-stepSize = 1	 					#distance between scan lines!?
-beginingRow = imgBgr.shape[0] - 1  	# start from the second row!?
+s = serial.Serial('/dev/ttyAMA0', 19200) 
+dataSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+dataSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+dataSocket.connect(('192.168.75.96', 7798))
+dataFile= dataSocket.makefile('ab')
 
 
+with picamera.PiCamera() as camera:
+	camera.resolution = (700, 460) 
+	camera.sensor_mode = 7
+	camera.shutter_speed= 10000
+	time.sleep(2)
+	stream = io.BytesIO()
 
-H_White_Pixels_Lists = []
-for i in range(0,nScanLines):
-		nRow = beginingRow - i * stepSize
-		# binarize a row of an image
-		processedRow = processImage(imgBgr, nRow)
-		# extract white pixels
-		whitePixelsCoordinates = HScan(processedRow)
-		newList = zip(whitePixelsCoordinates, ([nRow]*len(whitePixelsCoordinates)))
-		H_White_Pixels_Lists.append(newList)
-		#print('\nHScan resualt: \n%s\n' %H_White_Pixels_Lists)
-		# represent the location of white pixels in vehicle coordinate system
-		#mappedPoints = getLocalCoordinates(nRow, whitePixelsCoordinates)
-		# whitePixelsCoordinates need to be checked if they actually are marking lines(or their mapped values)
-		#markingPoint = getMarkingPoints(mappedPoints)
-
-
-
-VH = VScan(H_White_Pixels_Lists)
-localCoordinate_whitePixels = getLocalCoordinates(VH)
-
-#print('\nVHScan resualt: \n%s\n' %VH)
-#print('\nLocal Coords: \n%s\n' %localCoordinate_whitePixels)
-
-
-
-
-plt.subplot(121)
-for cluster in localCoordinate_whitePixels:
-	for point in cluster:
-		plt.scatter(point[0], point[1], s=5, facecolor='0.1', lw = 0)
-
-plt.show(block=False)
-print('\nelapsed Time: \n%s\n' %(time.time()-startTime))
-
-for cluster in VH:
-	for point in cluster:
-		cv2.circle(imgBgr, point, 2, (0, 0, 200))
-
-cv2.imshow('image', imgBgr)
-cv2.waitKey(0)
-
+	for foo in camera.capture_continuous(stream, 'jpeg', True):
+		startTime=time.time()
+		stream.seek(0)
+		imgBgr =  cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), 1)
+		nScanLines = 2					#number of scan lines
+		stepSize = 	 1					#distance between scan lines!?
+		beginingRow = imgBgr.shape[0] - 1 	# start from the second row!?
 		
+		# Horizontal Scan
+		H_White_Pixels_Lists = []
+		for i in range(0,nScanLines):
+			nRow = beginingRow - i * stepSize
+			# binarize a row of an image
+			processedRow = processImage(imgBgr, nRow)
+			# extract white pixels
+			whitePixelsCoordinates = HScan(processedRow)
+			newList = zip(whitePixelsCoordinates, ([nRow]*len(whitePixelsCoordinates)))
+			H_White_Pixels_Lists.append(newList)
+			
+		# Vertical Scan
+		VH = VScan(H_White_Pixels_Lists)
+		# Get Vehicle Coordination
+		localCoordinate_whitePixels=getLocalCoordinates(VH)
+
+		# Find the first lines at right
+		dominantClusters = []
+		for cluster in localCoordinate_whitePixels:
+			positiveClusters=[]	
+			#print('cluster_0: %s'%(str(cluster[0][0])))
+			if(cluster[0][0]>0):
+				positiveClusters.append(cluster)
+			dominantClusters= dominantClusters + positiveClusters
+
+		midPoint = []
+		for i in xrange (len(dominantClusters[1])):
+			midVal=((dominantClusters[1][i][0]-dominantClusters[0][i][0])/2.0)+dominantClusters[0][i][0]
+			midPoint.append((midVal, dominantClusters[0][i][1]))
+		Kp = 100
+		setPoint = 8.36
+		if (midPoint!=[]):
+			pidOutput = pidController(midPoint, setPoint, Kp )
+
+		initialSpeed = 70
+
+		rWheelSpeed =  initialSpeed + int(PIDoutput)		
+		lWheelSpeed =  initialSpeed - int(PIDoutput)
+
+		print('right wheel speed: %s'%rWheelSpeed)	
+		print('left wheel speed: %s'%lWheelSpeed)
+		if(rWheelSpeed<0):
+			rWheelSpeed = 0
+		elif(lWheelSpeed<0):
+			lWheelSpeed = 0
+
+		if(rWheelSpeed>255):
+			rWheelSpeed = 255
+		elif(lWheelSpeed>255):
+			lWheelSpeed = 255
+			
+		s.write(struct.pack('>B',rWheelSpeed))
+			s.write(struct.pack('>B',lWheelSpeed))
+			s.write('\n')	
+
+		else:
+			print("No Sorted Cluster Found!")
+			s.write(struct.pack('>B',0))
+			s.write(struct.pack('>B',0))
+			s.write('\n')
+
+
+		print('\nelapsed Time: \n%s\n' %(time.time()-startTime))
+		
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
