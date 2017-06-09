@@ -58,10 +58,10 @@ def efficient_HScan(frame, offset): # , first_white_pixel_x , offset):
 		start_pixel = first_white_pixel_x + offset
 		
 		# find the position of the edges
-		ind_row_derivative = np.nonzero(frame_derivative[row]) # returns a tuple
+		ind_row_derivative = np.nonzero(frame_derivative[row,start_pixel:]) # returns a tuple
 		if(len(ind_row_derivative[0])!=0):
 			for p in xrange(len(ind_row_derivative[0])): #len(ind_row_derivative[0]  # two first lines
-				white_pixels.append((ind_row_derivative[0][p], row)) #(x,y)
+				white_pixels.append((ind_row_derivative[0][p]+start_pixel, row)) #(x,y)
 		else:
 			continue
 		first_white_pixel_x = white_pixels[0][0]  # neglect the +1 position for now..
@@ -70,7 +70,7 @@ def efficient_HScan(frame, offset): # , first_white_pixel_x , offset):
 	return frame_white_pixels
 
 right_line_contour_candidate = efficient_HScan(bottom_right_part, -3)
-
+print right_line_contour_candidate
 
 def efficient_VScan(frame, offset): 
 	'''
