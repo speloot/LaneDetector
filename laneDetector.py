@@ -17,7 +17,6 @@ import matplotlib.pyplot as plt
 def get_image():
 	"""
 	image pre-processing
-
 	"""
 	image_path = '/home/siaesm/Pictures/img_02/img003.jpg'
 	src_img = cv2.imread(image_path)
@@ -42,97 +41,114 @@ bottom_right_part = processed_img[processed_img.shape[0]//2 : processed_img.shap
 # Find the righ line candidate
 
 
-def adaptive_HScan(frame, offset): # , first_white_pixel_x , offset):
+def efficient_HScan(frame, offset): # , first_white_pixel_x , offset):
 	'''
 	Scans a binary frame horizontally and returns the coordinations of wihte pixels
 	Input: numpy.ndarray
 	Output: a list of white pixels
-
 	'''
-	print 'image shape: %s' %(frame.shape,)
-	frame
 	frame_white_pixels = []
 	white_pixels = []
 	assigned_FWP = False
-	# find derivative of entire frame
 	frame_derivative = np.diff(frame)
-	nRows = frame_derivative.shape[0]-1 # in order to start from bottom..
+	nRows = frame_derivative.shape[0] -1 # in order to start from bottom.. 
 	
 	for i in xrange(nRows):
 		row = nRows-i
 		if not assigned_FWP:
 			# find the position of the edges
 			ind_row_derivative = np.nonzero(frame_derivative[row]) # returns a tuple
-			for p in xrange(2): #len(ind_row_derivative[0]  # two first lines
-				white_pixels.append((ind_row_derivative[0][p], row))
-
-			first_white_pixel_x = white_pixels[0][0]  # neglrct the +1 position for now..
+			if(len(ind_row_derivative[0])!=0):
+				for p in xrange(len(ind_row_derivative[0])): #len(ind_row_derivative[0]  # two first lines
+					white_pixels.append((ind_row_derivative[0][p], row)) #(x,y)
+			else:
+				continue
+			first_white_pixel_x = white_pixels[0][0]  # neglect the +1 position for now..
 			assigned_FWP = True
 		else:
 			start_pixel = first_white_pixel_x + offset
 			ind_row_derivative = np.nonzero(frame_derivative[row][start_pixel:])
-			for p in xrange(2): #len(ind_row_derivative[0])
-				white_pixels.append((ind_row_derivative[0][p]+start_pixel, row))
+			if(len(ind_row_derivative[0])!=0):
+				for p in xrange(len(ind_row_derivative[0])):
+					white_pixels.append((ind_row_derivative[0][p]+start_pixel, row))
+			else:
+				continue
+			print 'white_pixels: %s' %white_pixels
 			first_white_pixel_x = white_pixels[0][0]  # neglrct the +1 position for now..
 			assigned_FWP = True
 		frame_white_pixels.append(white_pixels)
 		white_pixels = []
 	return frame_white_pixels
 
-def adaptive_VScan(frame, offset): # , first_white_pixel_x , offset):
+#right_line_contour_candidate = efficient_HScan(bottom_right_part, -3)
+
+
+def efficient_VScan(frame, offset): 
 	'''
 	Scans a binary frame vertically and returns the coordinations of wihte pixels
 	Input: numpy.ndarray
 	Output: a list of white pixels
-
 	'''
 	
 	frame_white_pixels = []
 	white_pixels = []
 	assigned_FWP = False
 	# find derivative of entire frame
-	frame_derivative = np.diff(frame)
+	frame_derivative = np.diff(frame, axis = 0)
+	nCols = frame_derivative.shape[1]-1
 
-	nCols = frame_derivative.shape[1]
-	for i in xrange(0,nCols):
-		
+	for i in xrange(nCols):
 		if not assigned_FWP:
 			# find the position of the edges
 			column = frame_derivative[:,i]
 			reversed_column = column[::-1]
-			
-			ind_col_derivative = np.nonzero(reversed_column) # returns a tuple
-			if (len(ind_col_derivative)!=0):
-				for p in xrange(2): #len(ind_row_derivative[0]  # two first lines
-					white_pixels.append((ind_col_derivative[0][p]),i)
+			# the index of white pixel before reversion 
+			reverse_ind = np.nonzero(reversed_column)
+			ind_col_derivative = np.subtract((np.repeat(len(column)-1, len(reverse_ind))),reverse_ind)
+			if (len(ind_col_derivative[0])!=0):
+				for p in xrange(len(ind_col_derivative[0])): #len(ind_row_derivative[0]  # two first lines
+					white_pixels.append((i, ind_col_derivative[0][p])) #(x,y)
+				print '1-white_pixels: %s'%white_pixels
 			else:
 				continue		
-			first_white_pixel_y = white_pixels[0][0]  # neglrct the +1 position for now..
+			print white_pixels
+			first_white_pixel_y = white_pixels[-1][1] 
+			print first_white_pixel_y 
 			assigned_FWP = True
 		else:
 			start_pixel = first_white_pixel_y + offset  #negative offset
-			reversed_column = frame_derivative[start_pixel:,i] # ready for optimiziation..
-			ind_col_derivative = np.nonzero(reversed_column)
-			if (len(ind_col_derivative)!=0):
-				for p in xrange(2): #len(ind_row_derivative[0])
-					white_pixels.append((ind_col_derivative[0][p]+start_pixel, i))
+			column = frame_derivative[start_pixel:,i] # needs optimiziation..
+			#print column
+			reversed_column = column[::-1]
+			reverse_ind = np.nonzero(reversed_column)
+			print 'reverse_ind: %s'%reverse_ind
+			ind_col_derivative = np.subtract((np.repeat(len(column)-1, len(reverse_ind))),reverse_ind)
+			if (len(ind_col_derivative[0])!=0):
+				for p in xrange(len(ind_col_derivative[0])): #len(ind_row_derivative[0]  # two first lines
+					white_pixels.append((i, ind_col_derivative[0][p]+start_pixel))
+				#print '2-white_pixels: %s'%white_pixels
 			else:
-				continue
-			first_white_pixel_y = white_pixels[0][0]  # neglrct the +1 position for now..
+				continue		
+			first_white_pixel_y = white_pixels[-1][1]  # neglrct the +1 position for now..
 			assigned_FWP = True
 		frame_white_pixels.append(white_pixels)
 		white_pixels = []
 	return frame_white_pixels
 
+ 
+left_line_contour_candidate = efficient_VScan(top_left_part, -3)
+print left_line_contour_candidate
 
-wpixel = adaptive_VScan(top_left_part, -3)
-for rows in wpixel:
-	for points in rows:
-		cv2.circle(bottom_right_part, points,2,(155,155,155))
 print('executionTime: %s' %(time.time() - startTime))
+
+#cv2.imshow('image',bottom_right_part)
 cv2.imshow('image',top_left_part)
 cv2.waitKey(0)
+for rows in left_line_contour_candidate:
+	for points in rows:
+		#cv2.circle(bottom_right_part, points,2,(155,155,155))
+		cv2.circle(top_left_part, points,1,(155,155,155))
 
-"""
-
-"""
+#cv2.imshow('image',bottom_right_part)
+cv2.imshow('image',top_left_part)
+cv2.waitKey(0)
