@@ -11,9 +11,6 @@ import struct
 import matplotlib
 import matplotlib.pyplot as plt
 
-
-
-
 def get_image():
 	"""
 	image pre-processing
@@ -37,16 +34,13 @@ top_left_part = processed_img[0 : processed_img.shape[0]//2-1, 0 : processed_img
 bottom_left_part = processed_img[processed_img.shape[0]//2 : processed_img.shape[0], 0 : processed_img.shape[1]//2 -1]
 bottom_right_part = processed_img[processed_img.shape[0]//2 : processed_img.shape[0], processed_img.shape[1]//2 : processed_img.shape[1]]
 
-#print('a row of a binarized frame: %s'% bottom_right_part[0])
-# Find the righ line candidate
-
-
 def efficient_HScan(frame, offset): # , first_white_pixel_x , offset):
 	'''
 	Scans a binary frame horizontally and returns the coordinations of wihte pixels
 	Input: numpy.ndarray
 	Output: a list of white pixels
 	'''
+
 	frame_white_pixels = []
 	white_pixels = []
 	first_white_pixel_x = -offset
@@ -56,21 +50,17 @@ def efficient_HScan(frame, offset): # , first_white_pixel_x , offset):
 	for i in xrange(nRows):
 		row = nRows-i
 		start_pixel = first_white_pixel_x + offset
-		
 		# find the position of the edges
-		ind_row_derivative = np.nonzero(frame_derivative[row,start_pixel:]) # returns a tuple
+		ind_row_derivative = np.nonzero(frame_derivative[row, start_pixel:]) # returns a tuple
 		if(len(ind_row_derivative[0])!=0):
 			for p in xrange(len(ind_row_derivative[0])): #len(ind_row_derivative[0]  # two first lines
-				white_pixels.append((ind_row_derivative[0][p]+start_pixel, row)) #(x,y)
-		else:
+				white_pixels.append((ind_row_derivative[0][p] + start_pixel, row)) #(x,y)
+		else: 
 			continue
 		first_white_pixel_x = white_pixels[0][0]  # neglect the +1 position for now..
 		frame_white_pixels.append(white_pixels)
 		white_pixels = []
 	return frame_white_pixels
-
-right_line_contour_candidate = efficient_HScan(bottom_right_part, -3)
-print right_line_contour_candidate
 
 def efficient_VScan(frame, offset): 
 	'''
@@ -78,7 +68,8 @@ def efficient_VScan(frame, offset):
 	Input: numpy.ndarray
 	Output: a list of white pixels
 	'''
-	
+	#print 'image shape: %s' %(frame.shape,)
+	ctr = 0
 	frame_white_pixels = []
 	white_pixels = []
 	first_white_pixel_y = - offset
@@ -87,40 +78,82 @@ def efficient_VScan(frame, offset):
 	nCols = frame_derivative.shape[1]-1
 
 	for i in xrange(nCols):
-		
-		start_pixel = first_white_pixel_y + offset  #negative offset
-		column = frame_derivative[start_pixel:,i] # needs optimiziation..
-		reversed_column = column[::-1]
-		reverse_ind = np.nonzero(reversed_column)
-		print 'reverse_ind: %s'%reverse_ind
-		ind_col_derivative = np.subtract((np.repeat(len(column)-1, len(reverse_ind))),reverse_ind)
-		if (len(ind_col_derivative[0])!=0):
-			for p in xrange(len(ind_col_derivative[0])): #len(ind_row_derivative[0]  # two first lines
-				white_pixels.append((i, ind_col_derivative[0][p]+start_pixel))
+		if ctr<=2:
+			start_pixel = first_white_pixel_y + offset  #negative offset
+			column = frame_derivative[start_pixel:,i] # needs optimiziation..
+			reversed_column = column[::-1]
+			reverse_ind = np.nonzero(reversed_column)
+			ind_col_derivative = np.subtract((np.repeat(len(column)-1, len(reverse_ind))),reverse_ind)
+			#print 'ind_col_derivative: %s'%ind_col_derivative
+			if (len(ind_col_derivative[0])!=0):
+				for p in xrange(len(ind_col_derivative[0])): #len(ind_row_derivative[0]  # two first lines
+					white_pixels.append((i, ind_col_derivative[0][p]+start_pixel))
+			else:
+				ctr+=1
+				continue		
+			#print 'whitepixels: %s'%white_pixels
+			first_white_pixel_y = white_pixels[-1][1]
+			frame_white_pixels.append(white_pixels)
+			white_pixels = []
 		else:
-			continue		
-		first_white_pixel_y = white_pixels[-1][1]  # neglrct the +1 position for now..
-		frame_white_pixels.append(white_pixels)
-		white_pixels = []
-
+			break
 	return frame_white_pixels
 
- 
-#left_line_contour_candidate = efficient_VScan(top_left_part, -3)
-#print left_line_contour_candidate
+right_line_contour_candidate	= efficient_HScan(bottom_right_part, -3)
+left_line_contour_candidate		= efficient_VScan(top_left_part, -3)
+dashed_line_contour_candidate	= efficient_HScan(bottom_left_part, -3)
+
+for rows in right_line_contour_candidate:
+	del rows[2:]
+for rows in left_line_contour_candidate:
+	del rows[2:]
+for rows in dashed_line_contour_candidate:
+	del rows[2:]
+
+f = [item for sublist in right_line_contour_candidate for item in sublist]
+print f
+# in order to extract features of rectangles like rotation , there might be no need to re-form the image as whole!?
+
+
 
 print('executionTime: %s' %(time.time() - startTime))
 
+print right_line_contour_candidate
+
+
+#-----------Visualizering-------------------------------
+roi_img= cv2.cvtColor( processed_img, cv2.COLOR_GRAY2BGR)
+
+
+
+
+
+rect = cv2.minAreaRect(f)
+box = cv2.boxPoints(rect)
+box = np.int0(box)
+cv2.drawContours(roi_img,[box],0,(0,0,255),2)
+
+
+
+
+"""
 
 for rows in right_line_contour_candidate:
 	for points in rows:
-		cv2.circle(bottom_right_part, points,2,(155,155,155))
-		#cv2.circle(top_left_part, points,1,(155,155,155))
+		p = np.add(points,(319, 129))
 
-cv2.imshow('image',bottom_right_part)
-#cv2.imshow('image',top_left_part)
+		cv2.circle(roi_img, tuple(p), 2, (0,0,255))
+
+for rows in dashed_line_contour_candidate:
+	for points in rows:
+		p = np.add(points,(0, 129))
+		cv2.circle(roi_img, tuple(p),2,(0,255,0))
+
+for rows in left_line_contour_candidate:
+	for points in rows:
+		cv2.circle(roi_img, points,2,(255,0,0))
+
+"""
+cv2.imshow('image', roi_img)
 cv2.waitKey(0)
 
-#cv2.imshow('image',bottom_right_part)
-#cv2.imshow('image',top_left_part)
-#cv2.waitKey(0)
