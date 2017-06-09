@@ -49,38 +49,27 @@ def efficient_HScan(frame, offset): # , first_white_pixel_x , offset):
 	'''
 	frame_white_pixels = []
 	white_pixels = []
-	assigned_FWP = False
+	first_white_pixel_x = -offset
 	frame_derivative = np.diff(frame)
 	nRows = frame_derivative.shape[0] -1 # in order to start from bottom.. 
 	
 	for i in xrange(nRows):
 		row = nRows-i
-		if not assigned_FWP:
-			# find the position of the edges
-			ind_row_derivative = np.nonzero(frame_derivative[row]) # returns a tuple
-			if(len(ind_row_derivative[0])!=0):
-				for p in xrange(len(ind_row_derivative[0])): #len(ind_row_derivative[0]  # two first lines
-					white_pixels.append((ind_row_derivative[0][p], row)) #(x,y)
-			else:
-				continue
-			first_white_pixel_x = white_pixels[0][0]  # neglect the +1 position for now..
-			assigned_FWP = True
+		start_pixel = first_white_pixel_x + offset
+		
+		# find the position of the edges
+		ind_row_derivative = np.nonzero(frame_derivative[row]) # returns a tuple
+		if(len(ind_row_derivative[0])!=0):
+			for p in xrange(len(ind_row_derivative[0])): #len(ind_row_derivative[0]  # two first lines
+				white_pixels.append((ind_row_derivative[0][p], row)) #(x,y)
 		else:
-			start_pixel = first_white_pixel_x + offset
-			ind_row_derivative = np.nonzero(frame_derivative[row][start_pixel:])
-			if(len(ind_row_derivative[0])!=0):
-				for p in xrange(len(ind_row_derivative[0])):
-					white_pixels.append((ind_row_derivative[0][p]+start_pixel, row))
-			else:
-				continue
-			print 'white_pixels: %s' %white_pixels
-			first_white_pixel_x = white_pixels[0][0]  # neglrct the +1 position for now..
-			assigned_FWP = True
+			continue
+		first_white_pixel_x = white_pixels[0][0]  # neglect the +1 position for now..
 		frame_white_pixels.append(white_pixels)
 		white_pixels = []
 	return frame_white_pixels
 
-#right_line_contour_candidate = efficient_HScan(bottom_right_part, -3)
+right_line_contour_candidate = efficient_HScan(bottom_right_part, -3)
 
 
 def efficient_VScan(frame, offset): 
@@ -92,63 +81,46 @@ def efficient_VScan(frame, offset):
 	
 	frame_white_pixels = []
 	white_pixels = []
-	assigned_FWP = False
+	first_white_pixel_y = - offset
 	# find derivative of entire frame
 	frame_derivative = np.diff(frame, axis = 0)
 	nCols = frame_derivative.shape[1]-1
 
 	for i in xrange(nCols):
-		if not assigned_FWP:
-			# find the position of the edges
-			column = frame_derivative[:,i]
-			reversed_column = column[::-1]
-			# the index of white pixel before reversion 
-			reverse_ind = np.nonzero(reversed_column)
-			ind_col_derivative = np.subtract((np.repeat(len(column)-1, len(reverse_ind))),reverse_ind)
-			if (len(ind_col_derivative[0])!=0):
-				for p in xrange(len(ind_col_derivative[0])): #len(ind_row_derivative[0]  # two first lines
-					white_pixels.append((i, ind_col_derivative[0][p])) #(x,y)
-				print '1-white_pixels: %s'%white_pixels
-			else:
-				continue		
-			print white_pixels
-			first_white_pixel_y = white_pixels[-1][1] 
-			print first_white_pixel_y 
-			assigned_FWP = True
+		
+		start_pixel = first_white_pixel_y + offset  #negative offset
+		column = frame_derivative[start_pixel:,i] # needs optimiziation..
+		reversed_column = column[::-1]
+		reverse_ind = np.nonzero(reversed_column)
+		print 'reverse_ind: %s'%reverse_ind
+		ind_col_derivative = np.subtract((np.repeat(len(column)-1, len(reverse_ind))),reverse_ind)
+		if (len(ind_col_derivative[0])!=0):
+			for p in xrange(len(ind_col_derivative[0])): #len(ind_row_derivative[0]  # two first lines
+				white_pixels.append((i, ind_col_derivative[0][p]+start_pixel))
 		else:
-			start_pixel = first_white_pixel_y + offset  #negative offset
-			column = frame_derivative[start_pixel:,i] # needs optimiziation..
-			#print column
-			reversed_column = column[::-1]
-			reverse_ind = np.nonzero(reversed_column)
-			print 'reverse_ind: %s'%reverse_ind
-			ind_col_derivative = np.subtract((np.repeat(len(column)-1, len(reverse_ind))),reverse_ind)
-			if (len(ind_col_derivative[0])!=0):
-				for p in xrange(len(ind_col_derivative[0])): #len(ind_row_derivative[0]  # two first lines
-					white_pixels.append((i, ind_col_derivative[0][p]+start_pixel))
-				#print '2-white_pixels: %s'%white_pixels
-			else:
-				continue		
-			first_white_pixel_y = white_pixels[-1][1]  # neglrct the +1 position for now..
-			assigned_FWP = True
+			continue		
+		first_white_pixel_y = white_pixels[-1][1]  # neglrct the +1 position for now..
 		frame_white_pixels.append(white_pixels)
 		white_pixels = []
+
 	return frame_white_pixels
 
  
-left_line_contour_candidate = efficient_VScan(top_left_part, -3)
-print left_line_contour_candidate
+#left_line_contour_candidate = efficient_VScan(top_left_part, -3)
+#print left_line_contour_candidate
 
 print('executionTime: %s' %(time.time() - startTime))
 
-#cv2.imshow('image',bottom_right_part)
-cv2.imshow('image',top_left_part)
-cv2.waitKey(0)
-for rows in left_line_contour_candidate:
+
+for rows in right_line_contour_candidate:
 	for points in rows:
-		#cv2.circle(bottom_right_part, points,2,(155,155,155))
-		cv2.circle(top_left_part, points,1,(155,155,155))
+		cv2.circle(bottom_right_part, points,2,(155,155,155))
+		#cv2.circle(top_left_part, points,1,(155,155,155))
+
+cv2.imshow('image',bottom_right_part)
+#cv2.imshow('image',top_left_part)
+cv2.waitKey(0)
 
 #cv2.imshow('image',bottom_right_part)
-cv2.imshow('image',top_left_part)
-cv2.waitKey(0)
+#cv2.imshow('image',top_left_part)
+#cv2.waitKey(0)
