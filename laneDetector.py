@@ -34,34 +34,6 @@ top_left_part = processed_img[0 : processed_img.shape[0]//2-1, 0 : processed_img
 bottom_left_part = processed_img[processed_img.shape[0]//2 : processed_img.shape[0], 0 : processed_img.shape[1]//2 -1]
 bottom_right_part = processed_img[processed_img.shape[0]//2 : processed_img.shape[0], processed_img.shape[1]//2 : processed_img.shape[1]]
 
-def efficient_HScan(frame, offset): # , first_white_pixel_x , offset):
-	'''
-	Scans a binary frame horizontally and returns the coordinations of wihte pixels
-	Input: numpy.ndarray
-	Output: a list of white pixels
-	'''
-
-	frame_white_pixels = []
-	white_pixels = []
-	first_white_pixel_x = -offset
-	frame_derivative = np.diff(frame)
-	nRows = frame_derivative.shape[0] -1 # in order to start from bottom.. 
-	
-	for i in xrange(nRows):
-		row = nRows-i
-		start_pixel = first_white_pixel_x + offset
-		# find the position of the edges
-		ind_row_derivative = np.nonzero(frame_derivative[row, start_pixel:]) # returns a tuple
-		if(len(ind_row_derivative[0])!=0):
-			for p in xrange(len(ind_row_derivative[0])): #len(ind_row_derivative[0]  # two first lines
-				white_pixels.append((ind_row_derivative[0][p] + start_pixel, row)) #(x,y)
-		else: 
-			continue
-		first_white_pixel_x = white_pixels[0][0]  # neglect the +1 position for now..
-		frame_white_pixels.append(white_pixels)
-		white_pixels = []
-	return frame_white_pixels
-
 def efficient_VScan(frame, offset): 
 	'''
 	Scans a binary frame vertically and returns the coordinations of wihte pixels
@@ -99,49 +71,117 @@ def efficient_VScan(frame, offset):
 			break
 	return frame_white_pixels
 
-right_line_contour_candidate	= efficient_HScan(bottom_right_part, -3)
-left_line_contour_candidate		= efficient_VScan(top_left_part, -3)
-dashed_line_contour_candidate	= efficient_HScan(bottom_left_part, -3)
+def costum_HScan(frame, offset): # , first_white_pixel_x , offset):
+	'''
+	Scans a binary frame horizontally and returns the coordinations of wihte pixels
+	Input: numpy.ndarray
+	Output: a list of white pixels
+	'''
 
-for rows in right_line_contour_candidate:
-	del rows[2:]
-for rows in left_line_contour_candidate:
-	del rows[2:]
-for rows in dashed_line_contour_candidate:
-	del rows[2:]
+	frame_white_pixels = []
+	white_pixels = []
 
-f = [item for sublist in right_line_contour_candidate for item in sublist]
-print f
+	first_white_pixel_x = - offset
+	frame_derivative = np.diff(frame)
+	nRows = frame_derivative.shape[0] -1 # in order to start from bottom.. 
+	
+	for i in xrange(nRows):
+		row = nRows-i
+		start_pixel = first_white_pixel_x + offset
+		# find the position of the edges
+		ind_row_derivative = np.nonzero(frame_derivative[row, start_pixel:]) # returns a tuple
+		if(len(ind_row_derivative[0])!=0):
+			for p in xrange(len(ind_row_derivative[0])): 
+				white_pixels.append([ind_row_derivative[0][p] + start_pixel, row]) #(x,y)
+		else: 
+			continue
+		first_white_pixel_X= white_pixels[0]
+		frame_white_pixels.append(white_pixels)
+		white_pixels = []
+	return frame_white_pixels
+
 # in order to extract features of rectangles like rotation , there might be no need to re-form the image as whole!?
 
+right_line_contour_candidates   = costum_HScan(bottom_right_part, -3)
+dashed_line_contour_candidates	= costum_HScan(bottom_left_part, -3)
 
+def get_first_line(contour_candidates, offset):
+	first_line = []
+	for lines in contour_candidates:
+		p = np.add(lines, offset)
+		first_line.append(p)
+	return first_line
 
-print('executionTime: %s' %(time.time() - startTime))
+right_line  = get_first_line(right_line_contour_candidates, (319, 129))
+dashed_line = get_first_line(dashed_line_contour_candidates, (0,129))
 
-print right_line_contour_candidate
+contours = np.vstack(right_line).squeeze()
 
+rotrect = cv2.minAreaRect(contours)
+print rotrect
+print('executionTime: %s' %((time.time() - startTime)))
 
-#-----------Visualizering-------------------------------
-roi_img= cv2.cvtColor( processed_img, cv2.COLOR_GRAY2BGR)
-
-
-
-
-
-rect = cv2.minAreaRect(f)
-box = cv2.boxPoints(rect)
+print rotrect
+box = cv2.boxPoints(rotrect)
 box = np.int0(box)
-cv2.drawContours(roi_img,[box],0,(0,0,255),2)
+roi_img = cv2.cvtColor( processed_img, cv2.COLOR_GRAY2BGR)
+cv2.drawContours(roi_img,[box],0,(0,0,255),1)
+for l in right_line:
+	for p in l:
+		cv2.circle(roi_img,tuple(p), 2,(0,255,0))
+
+#print '\nright_line: %s'%right_line
+#print '\ndashed_line: %s'%dashed_line
 
 
-
+cv2.imshow('image', roi_img)
+cv2.waitKey(0)
 
 """
+cv2.drawContours(im, contours, -1, (0, 0, 255), 3)
 
+
+
+#-----------Regression-------------------------------
+def line_fit(x_candidates, y_candidates):
+	
+	(gradient, y_intercept) = np.polyfit(x_candidates, y_candidates, 1)
+	return gradient, y_intercept
+
+right_line = line_fit(x_right_line, y_right_line)
+dashed_line = line_fit(x_dashed_line, y_dashed_line)
+
+print 'right line: %s'%(right_line,)
+print 'dashed line: %s'%(dashed_line,)
+
+
+
+
+def x_intersection(line_1, line_2):
+	'''
+	 Returns the x of lines intersection
+	 input: gradient and y-intercept of two lines (np.ndarray)
+	 output: x_coordinate in   
+	'''
+	return (line_2[1]-line_1[1])//(line_1[0]-line_2[0])
+
+
+
+#----------classify lines------------------------------
+if ( (r_line[0]<0) & (d_line[0]>0) ):
+	print ok
+	x_vanishing_point = x_intersection(r_line, d_line)
+
+	print x_vanishing_point
+
+
+#----------Visualizering-------------------------------
+
+"""
+"""
 for rows in right_line_contour_candidate:
 	for points in rows:
 		p = np.add(points,(319, 129))
-
 		cv2.circle(roi_img, tuple(p), 2, (0,0,255))
 
 for rows in dashed_line_contour_candidate:
@@ -153,7 +193,10 @@ for rows in left_line_contour_candidate:
 	for points in rows:
 		cv2.circle(roi_img, points,2,(255,0,0))
 
+
+
+roi_img = cv2.cvtColor( processed_img, cv2.COLOR_GRAY2BGR)
+cv2.circle(roi_img, (x_right_line, y_right_line), 2, (0,0,255))
+
 """
-cv2.imshow('image', roi_img)
-cv2.waitKey(0)
 
