@@ -40,7 +40,7 @@ class CarRunner {
     /*
     Main function for running the car.
 
-    Increases a counter every counterPeriod milliseconds. If the counter is
+    Increases a counter loop. If the counter is
     below the speed value, the actual output speed is set to the minimum
     functioning speed. The time the counter spends below the speed
     value is linear with the speed value, and so the speed actually achieved
@@ -49,15 +49,11 @@ class CarRunner {
     int leftWheelOut = leftSpeed;
     int rightWheelOut = rightSpeed;
     
-    //int counterIncVal = (millis()-lastCounterUpdate)/counterPeriod;
-    //if (counterIncVal > 0) {
-      //lastCounterUpdate = millis();
-      counter++;//= counterIncVal;
-    //}
-
+    counter++;
     if (counter > threshold){
       counter = 0;
     }
+    
     if(leftSpeed < threshold){
       if(counter < leftSpeed)  {
         leftWheelOut = threshold;  // set speed to minimum functioning
@@ -77,7 +73,6 @@ class CarRunner {
 
     if(millis() > lastCommand + timeout_time){
       timeout = true;
-      Serial.println("timing out in carrunner");
     } else {
       timeout = false;
     }
@@ -112,8 +107,8 @@ long lastCommandMillis = 0;
 int timeout = 1000;
 void setup()
 {
-  Serial3.begin(115200);          // Rpi port
-  Serial.begin(115200);           // Arduino port
+  Serial3.begin(19200);          // Rpi port
+  Serial.begin(19200);           // Arduino port
   car.setSpeed(0,0);
 }
 
@@ -121,16 +116,15 @@ void loop()
 {
   while(1)
   {
-    if (Serial.available() >= 3)
+    if (Serial3.available() >= 3)
     {
       for(int i=0; i<3; i++)
       {
-        incomingByte[i] = Serial.read();
+        incomingByte[i] = Serial3.read();
 
         if(incomingByte[i] == '\n')
         {
           lastCommandMillis = millis();
-          Serial.println(incomingByte[1]);
           break;
         }
       }
