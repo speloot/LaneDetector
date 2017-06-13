@@ -91,7 +91,8 @@ def costum_HScan(frame, offset): # , first_white_pixel_x , offset):
 		# find the position of the edges
 		ind_row_derivative = np.nonzero(frame_derivative[row, start_pixel:]) # returns a tuple
 		if(len(ind_row_derivative[0])!=0):
-			for p in xrange(len(ind_row_derivative[0])): 
+			#for p in xrange(len(ind_row_derivative[0])): 
+			for p in xrange(2): 
 				white_pixels.append([ind_row_derivative[0][p] + start_pixel, row]) #(x,y)
 		else: 
 			continue
@@ -115,33 +116,78 @@ def get_first_line(contour_candidates, offset):
 right_line  = get_first_line(right_line_contour_candidates, (319, 129))
 dashed_line = get_first_line(dashed_line_contour_candidates, (0,129))
 
-contours = np.vstack(right_line).squeeze()
+right_line_contours = np.vstack(right_line).squeeze()
+dashed_line_contours = np.vstack(dashed_line).squeeze()
+# rect = ((center_x,center_y),(width,height),angle)
+r_rot_rect = cv2.minAreaRect(right_line_contours)
+d_rot_rect = cv2.minAreaRect(dashed_line_contours)
 
-rotrect = cv2.minAreaRect(contours)
-print rotrect
 print('executionTime: %s' %((time.time() - startTime)))
 
-print rotrect
-box = cv2.boxPoints(rotrect)
-box = np.int0(box)
+print'\nright line box: %s' %(r_rot_rect,)
+print'\ndashed line box: %s'%(d_rot_rect,)
+
+print '\nright line angle: %s'%(r_rot_rect[-1])
+print '\ndashed line angle: %s'%(d_rot_rect[-1])
+
+print'\nright line center: %s' %(r_rot_rect[0],)
+print'\ndashed line center: %s' %(d_rot_rect[0],)
+
+#------------------------------------------------------
+"""
+def x_intersection(p1, a, p2, b):
+	'''
+	 Returns the x of lines intersection
+	 input: two points + two angle
+	 output: x_coordinate : X = ( (y_2 - b * x_2) - (y_1 - a* x_1) ) // (a - b)
+	'''
+	# convert all coordinates floating point values to int ???         needs to be checked!!!
+	p1 = np.int0(p1)
+	p2 = np.int0(p2)
+	gradient_a = math.tan(-a)
+	print 'grad_a: %s'%gradient_a
+	gradient_b = math.tan(180 + b)
+	print 'grad_b: %s'%gradient_b
+
+
+	intersect = ((p2[1]-gradient_b*p2[0]) - (p1[1]-gradient_a*p1[0]))//(a-b)
+	#intersect -= p2[0]
+	return np.int(intersect)
+
+
+x_intersect = x_intersection(r_rot_rect[0], r_rot_rect[-1], d_rot_rect[0], d_rot_rect[-1] )
+
+print('executionTime: %s' %((time.time() - startTime)))
+print 'x_intersect: %s' %x_intersect
+"""
+
+
+#----------Visualizering-------------------------------
+
+def draw_rot_rect(image, contours):
+	box = cv2.boxPoints(contours)
+	box = np.int0(box)
+	cv2.drawContours(image, [box], -1,(0,0,255),2)
+
 roi_img = cv2.cvtColor( processed_img, cv2.COLOR_GRAY2BGR)
-cv2.drawContours(roi_img,[box],0,(0,0,255),1)
+draw_rot_rect(roi_img, r_rot_rect)
+draw_rot_rect(roi_img, d_rot_rect)
+
+#cv2.circle(roi_img,(x_intersect, 10), 3,(0,255,0))
+
+"""
 for l in right_line:
 	for p in l:
 		cv2.circle(roi_img,tuple(p), 2,(0,255,0))
-
-#print '\nright_line: %s'%right_line
-#print '\ndashed_line: %s'%dashed_line
-
+for l in dashed_line:
+	for p in l:
+		cv2.circle(roi_img,tuple(p), 2,(0,255,0))
+"""		
 
 cv2.imshow('image', roi_img)
 cv2.waitKey(0)
 
 """
-cv2.drawContours(im, contours, -1, (0, 0, 255), 3)
-
-
-
 #-----------Regression-------------------------------
 def line_fit(x_candidates, y_candidates):
 	
@@ -150,12 +196,6 @@ def line_fit(x_candidates, y_candidates):
 
 right_line = line_fit(x_right_line, y_right_line)
 dashed_line = line_fit(x_dashed_line, y_dashed_line)
-
-print 'right line: %s'%(right_line,)
-print 'dashed line: %s'%(dashed_line,)
-
-
-
 
 def x_intersection(line_1, line_2):
 	'''
@@ -174,8 +214,6 @@ if ( (r_line[0]<0) & (d_line[0]>0) ):
 
 	print x_vanishing_point
 
-
-#----------Visualizering-------------------------------
 
 """
 """
