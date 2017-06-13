@@ -116,14 +116,30 @@ def get_first_line(contour_candidates, offset):
 right_line  = get_first_line(right_line_contour_candidates, (319, 129))
 dashed_line = get_first_line(dashed_line_contour_candidates, (0,129))
 
+# nd.array to 1d.array
 right_line_contours = np.vstack(right_line).squeeze()
 dashed_line_contours = np.vstack(dashed_line).squeeze()
-# rect = ((center_x,center_y),(width,height),angle)
-r_rot_rect = cv2.minAreaRect(right_line_contours)
-d_rot_rect = cv2.minAreaRect(dashed_line_contours)
 
-print('executionTime: %s' %((time.time() - startTime)))
+def get_line_specification(contours):
 
+	rotated_rect = cv2.minAreaRect(contours)
+	# rect = ((center_x,center_y),(width,height),angle)
+	if (rotated_rect[1][0] < rotated_rect[1][1]):
+		angle = 90 + rotated_rect[-1]
+	else:
+		angle = 180 + rotated_rect[-1]
+
+	rotated_rect_list = list(rotated_rect)
+	rotated_rect_list[-1] = angle
+
+	return rotated_rect_list
+
+r_rot_rect = get_line_specification(right_line_contours)
+d_rot_rect = get_line_specification(dashed_line_contours)
+
+
+#print('executionTime: %s' %((time.time() - startTime)))
+"""
 print'\nright line box: %s' %(r_rot_rect,)
 print'\ndashed line box: %s'%(d_rot_rect,)
 
@@ -132,10 +148,10 @@ print '\ndashed line angle: %s'%(d_rot_rect[-1])
 
 print'\nright line center: %s' %(r_rot_rect[0],)
 print'\ndashed line center: %s' %(d_rot_rect[0],)
-
-#------------------------------------------------------
 """
-def x_intersection(p1, a, p2, b):
+#------------------------------------------------------
+
+def x_intersection(p1, p2, a, b):
 	'''
 	 Returns the x of lines intersection
 	 input: two points + two angle
@@ -144,28 +160,27 @@ def x_intersection(p1, a, p2, b):
 	# convert all coordinates floating point values to int ???         needs to be checked!!!
 	p1 = np.int0(p1)
 	p2 = np.int0(p2)
-	gradient_a = math.tan(-a)
-	print 'grad_a: %s'%gradient_a
-	gradient_b = math.tan(180 + b)
-	print 'grad_b: %s'%gradient_b
 
+	gradient_a = - math.tan(a*np.pi/180)
+	#print 'grad_ra: %s'%gradient_a
+	gradient_b = - math.tan(b*np.pi/180)
+	#print 'grad_db: %s'%gradient_b
+	intersect = ((p2[1]-gradient_b*p2[0]) - (p1[1]-gradient_a*p1[0]))//(gradient_a-gradient_b)
 
-	intersect = ((p2[1]-gradient_b*p2[0]) - (p1[1]-gradient_a*p1[0]))//(a-b)
-	#intersect -= p2[0]
 	return np.int(intersect)
 
 
-x_intersect = x_intersection(r_rot_rect[0], r_rot_rect[-1], d_rot_rect[0], d_rot_rect[-1] )
+x_intersect = x_intersection(r_rot_rect[0], d_rot_rect[0], r_rot_rect[-1], d_rot_rect[-1] )
 
 print('executionTime: %s' %((time.time() - startTime)))
 print 'x_intersect: %s' %x_intersect
-"""
+
 
 
 #----------Visualizering-------------------------------
 
 def draw_rot_rect(image, contours):
-	box = cv2.boxPoints(contours)
+	box = cv2.boxPoints(tuple(contours))
 	box = np.int0(box)
 	cv2.drawContours(image, [box], -1,(0,0,255),2)
 
@@ -173,8 +188,9 @@ roi_img = cv2.cvtColor( processed_img, cv2.COLOR_GRAY2BGR)
 draw_rot_rect(roi_img, r_rot_rect)
 draw_rot_rect(roi_img, d_rot_rect)
 
-#cv2.circle(roi_img,(x_intersect, 10), 3,(0,255,0))
-
+cv2.circle(roi_img,(x_intersect, 10), 3,(0,255,0))
+cv2.line(roi_img,(320, 0), (320,259),(255,255,255), 1)
+cv2.line(roi_img,(320, 259), (x_intersect,10),(0, 255, 0), 1)
 """
 for l in right_line:
 	for p in l:
