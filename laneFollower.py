@@ -1,6 +1,5 @@
 #!/usr/bin/python
 # -*- coding: iso-8859-15 -*-
-
 from __future__ import division
 import cv2
 import serial
@@ -13,148 +12,94 @@ import math
 import numpy as np
 import time
 import struct
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 
-def processImage(image, nRow):
+
+def process_image(img):
+	"""
+	image pre-processing
+	"""
+	roi_img = img[ 220 : 480, 0 : img.shape[1] ]  
+	gray_img = cv2.cvtColor( roi_img, cv2.COLOR_BGR2GRAY )
+	blured_img = cv2.GaussianBlur(gray_img,(5,5),0)
+	(thresh, bin_img) = cv2.threshold(blured_img, 200, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+	return bin_img
+
+def costum_HScan(frame, offset): # , first_white_pixel_x , offset):
 	'''
-    Binarizes a row of the image
-    Arguments: an image in form of arra
-
-    '''
-
-	roi = image[ nRow : nRow+1, 0 : image.shape[1] ] 
-
-	gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-	#blured = cv2.GaussianBlur(gray, (15, 15), 0)
-	(thresh, bw) = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-	processedRow = bw
-	return processedRow
-
-def getWhitePixelCoordinates(row):
-	'''
-	Scans a row of a binary image and returns the coordinations of wihte pixels
-	Input: a binary list 
+	Scans a binary frame horizontally and returns the coordinations of wihte pixels
+	Input: numpy.ndarray
 	Output: a list of white pixels
-			nonZeroCoordinates: column number of transition from black to white and vice versa, i.e. edges!
-			binarizedRow: almost tha same as row but begining and end of the white pixels
-			are turned to 1
 	'''
+
+	frame_white_pixels = []
+	white_pixels = []
+
+	first_white_pixel_x = - offset
+	frame_derivative = np.diff(frame)
+	nRows = frame_derivative.shape[0] -1 # in order to start from bottom.. 
 	
-	nCol = row.shape[1]
-	nonZeroCoordinates = []
-	#binarizedRow = []
-	# Scan a row of a binary image 
-	for j in range(nCol-10):
-		# Check where transition from 0 to 1 or vice versa occurs!
-		val = int(row[0][j+1]) - int(row[0][j])
-		if (val > 0):
-			nonZeroCoordinates.append((j))
-			#binarizedRow.append(1)
-		elif (val < 0):
-			nonZeroCoordinates.append((j))
-			#binarizedRow.append(1)
-		#else: binarizedRow.append(0)
+	for i in xrange(nRows):
+		row = nRows-i
+		start_pixel = first_white_pixel_x + offset
+		# find the position of the edges
+		ind_row_derivative = np.nonzero(frame_derivative[row, start_pixel:]) # returns a tuple
+		if(len(ind_row_derivative[0])!=0):
+			#for p in xrange(len(ind_row_derivative[0])): 
+			for p in xrange(2): 
+				white_pixels.append([ind_row_derivative[0][p] + start_pixel, row]) #(x,y)
+		else: 
+			continue
+		first_white_pixel_X= white_pixels[0]
+		frame_white_pixels.append(white_pixels)
+		white_pixels = []
+	return frame_white_pixels
 
-	return nonZeroCoordinates
-
-def getLocalCoordinates(row, points):
-
-    '''
-    Transforms points to local coordinate system.
-    This assumes camera is mounted at 25 degrees to the vertical, but angle can
-    be modified by cam_mount_angle.
-    Input: normalized(row: the row number, column: whitePixelCoordinates)
-    Output: a list of tuples: points: coordinates of white pixels in cm from camera origin
-
-    '''
-    camAngle = 70.0 #78 # 74.6 	# in degrees
-    pi = 3.14159265
-    h = 18 				# cm
-
-    cam_mount_angle = camAngle * pi/180
-    cam_x_fov = 62.2*pi/180
-    cam_y_fov = 48.8*pi/180
-    xPositions = []
-    yPositions = []
-    localPoints = []
-
-    for p in points:
-    
-        phi_x = ((p/640)-0.5)*cam_x_fov
-        phi_y = -((row/480)-0.5)*cam_y_fov
-        theta_y = cam_mount_angle + phi_y
-        theta_x = phi_x
-        y = math.tan(theta_y) * h
-        r = math.sqrt(y**2+h**2)
-        x = r * math.tan(theta_x)
-    	localPoints.append((x,y))
-
-    return localPoints
-
-def getMarkingPoints(whitePoints):
-
+def get_first_line(contour_candidates, offset):
 	'''
-	Measures the gap between detected white pixels in a row of an image, check if they meet the criteria
-	Input: a tuple: points: coordinates of white pixels in cm from camera origin
-	Output:  a list of possible marking points
+	returns cropped frame pixels to actual frame 
 	'''
-	markings = []
-	minLineWidth = 1.65
-	maxLineWidth = 2.1
+	first_line = []
+	for lines in contour_candidates:
+		p = np.add(lines, offset)
+		first_line.append(p)
+	return first_line
 
-	for m in range(0,len(whitePoints)):
-		if( m != len(whitePoints)-1):
-			width = whitePoints[m+1][0] - whitePoints[m][0]
-			if ( (width < maxLineWidth) & (width > minLineWidth) ):
-				markings.append(whitePoints[m])
-				markings.append(whitePoints[m+1])
-					
-	return markings 
+def get_line_specification(contours):
 
-def isInSameCluster(currentPoint, nextPoint):
+	rotated_rect = cv2.minAreaRect(contours)
+	# rect = ((center_x,center_y),(width,height),angle)
+	if (rotated_rect[1][0] < rotated_rect[1][1]):
+		angle = 90 + rotated_rect[-1]
+	else:
+		angle = 180 + rotated_rect[-1]
 
-	margin = 2
-	rangeResult = False
-	rightOffset = currentPoint + margin
-	leftOffset = currentPoint - margin
-	if ((nextPoint <= rightOffset) & (nextPoint >= leftOffset)):
-		rangeResult = True
+	rotated_rect_list = list(rotated_rect)
+	rotated_rect_list[-1] = angle
 
-	return rangeResult
+	return rotated_rect_list
 
-def isConcatable(currentPoint, nextPoint):
+def x_intersection(p1, p2, a, b):
 	'''
-	checks if the points in a cluster are concatable
-
-	Input: two successive points (x1,y1),(x2, y2) 
-	Output: boolean True or False 
+	 Returns the x of lines intersection
+	 input: two points + two angle
+	 output: x_coordinate : X = ( (y_2 - b * x_2) - (y_1 - a* x_1) ) // (a - b)
 	'''
-	margin = 0.155
-	rangeResult = False
-	rightOffset = currentPoint[1] + margin
-	leftOffset = currentPoint[1] - margin
-	if ((nextPoint[1] <= rightOffset) & (nextPoint[1] >= leftOffset)):
-		rangeResult = True
+	# convert all coordinates floating point values to int ???         needs to be checked!!!
+	p1 = np.int0(p1)
+	p2 = np.int0(p2)
+	gradient_a = - math.tan(a*np.pi/180)
+	gradient_b = - math.tan(b*np.pi/180)
+	intersect = ((p2[1]-gradient_b*p2[0]) - (p1[1]-gradient_a*p1[0]))//(gradient_a-gradient_b)
+	return np.int(intersect)
 
-	return rangeResult
-
-def pidController(actualPoint, setPoint, prevError, Kd, Kp):
+def pidController(actualPoint, setPoint, prevError, Kp):
 	'''
-	Calculate System Input using a "PID Controller"
-
+	Calculate System Input using a "PID Controller
 	'''
 	# Error between the desired and actual output
 	actualError = setPoint - actualPoint
-
-	# Derivation Input
-	derivativeState = 1/Kd * (actualError - prevError )
-
 	# Calculate system input
-	pidResult = Kp * (actualError + derivativeState)
-
-	
+	pidResult = Kp * actualError
 	return pidResult, actualError
 
 
@@ -164,12 +109,7 @@ dataSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 dataSocket.connect(('192.168.75.96', 7798))
 
 dataFile= dataSocket.makefile('ab')
-
-u0 = 0
-e0 = 0																	
-pi = 3.14159265
-
-
+init_error_val = 0
 
 with picamera.PiCamera() as camera:
 	camera.resolution = (640, 480) 
@@ -184,87 +124,30 @@ with picamera.PiCamera() as camera:
 		startTime=time.time()
 		stream.seek(0)
 		imgBgr =  cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), 1)
-		#cv2.imwrite('image.png', imgBgr)
-		nScanLines = 20 					#number of scan lines
-		stepSize = 	 2					#distance between scan lines!?
-		beginingRow = imgBgr.shape[0] - 40  	# start from the second row!?
-
-		markingPoints = []
-		clusters = []
-		
-		for i in range(0,nScanLines):
-
-			nRow = beginingRow - i * stepSize
-			# binarize a row of an image
-			processedRow = processImage(imgBgr, nRow)
-			# extract white pixels
-			whitePixelsCoordinates = getWhitePixelCoordinates(processedRow)
-			#whitePixels.append(whitePixelsCoordinates)
-			# represent the location of white pixels in vehicle coordinate system
-			mappedPoints = getLocalCoordinates(nRow, whitePixelsCoordinates)
-			# whitePixelsCoordinates need to be checked if they actually are marking lines(or their mapped values)
-			markingPoint = getMarkingPoints(mappedPoints)
-			markingPoints.append((markingPoint))
-			
-			# clustering: pick a marking line of current row, compare it to the other elements of previous and next ones
-			for point in markingPoint:
-				assigned = False
-				for cluster in clusters:
-					if (isInSameCluster(point[0],cluster[-1][0])):
-						cluster.append(point)
-						assigned = True
-				if not assigned:
-					clusters.append([point])
-		print('len clusters: %s'%len(clusters))
-		sortedClusters = sorted(clusters, key=lambda cluster:cluster[0][0] )
-		clusters = []
-		if (sortedClusters != []):
-
-		#sortedClusters = []
-		#for cluster in clusters:
-		#	print('len cluster!!: %s'%len(cluster))
-		#	if (len(cluster) >= 0.4*nScanLines):
-		#		sortedClusters.append([cluster])
-		#print('len sortedClusters: %s'%len(sortedClusters))		
-		#if (len(sortedClusters)!=0):
-
-			 
-			#print('last cluster: %s' %lanes[-1])
-			
-			dataString = pickle.dumps(sortedClusters)
-
-			dataFile.write(struct.pack('<L', len(dataString)))
-			dataFile.flush()
-			dataFile.write(dataString)
-			dataFile.flush()
-			
-			degree = 1
-			coeffs = []
-			x, y = [], []
-			coefficients = []
-			#if (sortedClusters):
-			for point in sortedClusters[-1]:
-				x.append(point[0])
-				y.append(point[1])
-			coeffs = np.polyfit(y, x, degree)
-			x = []
-			y = []
-			coefficients.append(coeffs.tolist())
-
-			slope1 = coefficients[0][0]
-			print('slope: %s'%slope1)
-
-			angle = math.atan(slope1)	# in radians [0, pi]
-			print('angle= %d' %(angle*(180/3.1415)))
-			( PIDoutput, e0) = pidController(angle, 0, e0, Kd = 50, Kp=140) 
+		processed_img = process_image(imgBgr)
+		bottom_right_part = processed_img[processed_img.shape[0]//2 : processed_img.shape[0],
+										 processed_img.shape[1]//2 : processed_img.shape[1]]
+		bottom_left_part = processed_img[processed_img.shape[0]//2 : processed_img.shape[0],
+										 0 : processed_img.shape[1]//2 -1]
+		right_line_contour_candidates   = costum_HScan(bottom_right_part, -3)
+		dashed_line_contour_candidates	= costum_HScan(bottom_left_part, -3)
+		if ((len(right_line_contour_candidates)!=0) & (len(dashed_line_contour_candidates)!=0)):
+			right_line  = get_first_line(right_line_contour_candidates, (319, 129))
+			dashed_line = get_first_line(dashed_line_contour_candidates, (0,129))
+			# nd.array to 1d.array
+			right_line_contours = np.vstack(right_line).squeeze()
+			dashed_line_contours = np.vstack(dashed_line).squeeze()
+			r_rot_rect = get_line_specification(right_line_contours)
+			d_rot_rect = get_line_specification(dashed_line_contours)
+			x_intersect = x_intersection(r_rot_rect[0], d_rot_rect[0], r_rot_rect[-1], d_rot_rect[-1] )
+			print('\nvanishing point: %s'%x_intersect)
+			set_point = 320 #----------------------------------------------------------------
+			( PIDoutput, error_val) = pidController(x_intersect, set_point, init_error_val, Kp = 4) 
+			init_error_val = error_val
 			# Set the Speed of Motors
-			initialSpeed = 75
-
+			initialSpeed = 90
 			rWheelSpeed =  initialSpeed + int(PIDoutput)		
 			lWheelSpeed =  initialSpeed - int(PIDoutput)
-
-			print('right wheel speed: %s'%rWheelSpeed)	
-			print('left wheel speed: %s'%lWheelSpeed)
 			if(rWheelSpeed<0):
 				rWheelSpeed = 0
 			elif(lWheelSpeed<0):
@@ -274,61 +157,26 @@ with picamera.PiCamera() as camera:
 				rWheelSpeed = 255
 			elif(lWheelSpeed>255):
 				lWheelSpeed = 255
-
+			# just to check the live streaming of images
 			lWheelSpeed = 0
 			rWheelSpeed = 0
 
+			print('\nright wheel speed: %s'%rWheelSpeed)	
+			print('\nleft wheel speed: %s'%lWheelSpeed)
 			s.write(struct.pack('>B',rWheelSpeed))
 			s.write(struct.pack('>B',lWheelSpeed))
-			s.write('\n')	
-
-		else:
-			print("No Sorted Cluster Found!")
+			s.write('\n')
+		else: 
+			print("\nNo Marking Lines!!!")
 			s.write(struct.pack('>B',0))
 			s.write(struct.pack('>B',0))
 			s.write('\n')
-		
+
 		stream.seek(0)
 		stream.truncate()
 		
-		dt_all = time.time() - startTime
-		print('executionTime: %s' %(dt_all))	
-		
-
-
-					
+		print('execution time: %s' %((time.time() - startTime)))
 
 
 
-
-
-"""
-
-			# classify solid and broken lines
-			brokenLinesCluster = []
-			solidLinesCluster = []
-
-			brokenClusters = []
-			solidClusters = []
-
-			for cluster in sortedClusters:
-				for point in range(0, len(cluster)-1):
-					if not (isConcatable(cluster[point], cluster[point +1])):
-						#print(cluster[point])
-						brokenLinesCluster.append(cluster[point])
-					else:
-						solidLinesCluster.append(cluster[point])
-						
-				brokenClusters.append(brokenLinesCluster)
-				solidClusters.append(solidLinesCluster)
-				brokenLinesCluster = []
-				solidLinesCluster = []
-# Find the fitting line for the "last" broken line and "one last" solid line
-			#brokenLine = brokenClusters[-1]
-			#solidLine = solidClusters[-2]
-			determinantClusters = []
-			#determinantClusters.append(brokenClusters[-1])
-			determinantClusters.append(solidClusters[0])
-			#print(determinantClusters)
-"""
 
