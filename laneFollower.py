@@ -104,11 +104,13 @@ def pidController(actualPoint, setPoint, prevError, Kp):
 
 
 s = serial.Serial('/dev/ttyAMA0', 19200) 
+print('Serial Connection Is Established!')
 dataSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 dataSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 dataSocket.connect(('192.168.75.96', 7798))
-
+print('Socket Is Binded -> ')
 dataFile= dataSocket.makefile('ab')
+
 init_error_val = 0
 
 with picamera.PiCamera() as camera:
@@ -116,13 +118,16 @@ with picamera.PiCamera() as camera:
 	camera.sensor_mode = 7
 	camera.shutter_speed= 10000
 	time.sleep(2)
+	print('Camera Is ON!')
 	stream = io.BytesIO()
-	#with picamera.array.PiRGBArray(camera) as stream:
-	
 
 	for foo in camera.capture_continuous(stream, 'jpeg', True):
 		startTime=time.time()
 		stream.seek(0)
+		#-------------------------------------------------
+		live_stream_data = stream.read()
+		stream.truncate()
+		#-------------------------------------------------
 		imgBgr =  cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), 1)
 		processed_img = process_image(imgBgr)
 		bottom_right_part = processed_img[processed_img.shape[0]//2 : processed_img.shape[0],
@@ -171,7 +176,12 @@ with picamera.PiCamera() as camera:
 			s.write(struct.pack('>B',0))
 			s.write(struct.pack('>B',0))
 			s.write('\n')
+	
 
+		dataFile.write(struct.pack('<L', len(live_stream_data)))
+		dataFile.flush()
+		dataFile.write(live_stream_data)
+		dataFile.flush()
 		stream.seek(0)
 		stream.truncate()
 		
