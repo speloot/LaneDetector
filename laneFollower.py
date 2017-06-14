@@ -18,7 +18,7 @@ def process_image(img):
 	"""
 	image pre-processing
 	"""
-	roi_img = img[ 220 : 480, 0 : img.shape[1] ]  
+	roi_img = img[ 220 : 450, 0 : img.shape[1] ]  
 	gray_img = cv2.cvtColor( roi_img, cv2.COLOR_BGR2GRAY )
 	blured_img = cv2.GaussianBlur(gray_img,(5,5),0)
 	(thresh, bin_img) = cv2.threshold(blured_img, 200, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
@@ -105,12 +105,13 @@ def pidController(actualPoint, setPoint, prevError, Kp):
 
 s = serial.Serial('/dev/ttyAMA0', 19200) 
 print('Serial Connection Is Established!')
+'''
 dataSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 dataSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 dataSocket.connect(('192.168.75.96', 7798))
 print('Socket Is Binded -> ')
 dataFile= dataSocket.makefile('ab')
-
+'''
 init_error_val = 0
 
 with picamera.PiCamera() as camera:
@@ -123,10 +124,10 @@ with picamera.PiCamera() as camera:
 
 	for foo in camera.capture_continuous(stream, 'jpeg', True):
 		startTime=time.time()
-		stream.seek(0)
+		#stream.seek(0)
 		#-------------------------------------------------
-		live_stream_data = stream.read()
-		stream.truncate()
+		#live_stream_data = stream.read()
+		#stream.truncate()
 		#-------------------------------------------------
 		imgBgr =  cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), 1)
 		processed_img = process_image(imgBgr)
@@ -137,8 +138,8 @@ with picamera.PiCamera() as camera:
 		right_line_contour_candidates   = costum_HScan(bottom_right_part, -3)
 		dashed_line_contour_candidates	= costum_HScan(bottom_left_part, -3)
 		if ((len(right_line_contour_candidates)!=0) & (len(dashed_line_contour_candidates)!=0)):
-			right_line  = get_first_line(right_line_contour_candidates, (319, 129))
-			dashed_line = get_first_line(dashed_line_contour_candidates, (0,129))
+			right_line  = get_first_line(right_line_contour_candidates, ((processed_img.shape[0]//2)-1, (processed_img.shape[1]//2)-1))
+			dashed_line = get_first_line(dashed_line_contour_candidates, (0, (processed_img.shape[1]//2)-1))
 			# nd.array to 1d.array
 			right_line_contours = np.vstack(right_line).squeeze()
 			dashed_line_contours = np.vstack(dashed_line).squeeze()
@@ -146,8 +147,8 @@ with picamera.PiCamera() as camera:
 			d_rot_rect = get_line_specification(dashed_line_contours)
 			x_intersect = x_intersection(r_rot_rect[0], d_rot_rect[0], r_rot_rect[-1], d_rot_rect[-1] )
 			print('\nvanishing point: %s'%x_intersect)
-			set_point = 320 #----------------------------------------------------------------
-			( PIDoutput, error_val) = pidController(x_intersect, set_point, init_error_val, Kp = 4) 
+			set_point = 300 #----------------------------------------------------------------
+			( PIDoutput, error_val) = pidController(x_intersect, set_point, init_error_val, Kp = 2) 
 			init_error_val = error_val
 			# Set the Speed of Motors
 			initialSpeed = 90
@@ -177,14 +178,14 @@ with picamera.PiCamera() as camera:
 			s.write(struct.pack('>B',0))
 			s.write('\n')
 	
-
+		'''	
 		dataFile.write(struct.pack('<L', len(live_stream_data)))
 		dataFile.flush()
 		dataFile.write(live_stream_data)
 		dataFile.flush()
 		stream.seek(0)
 		stream.truncate()
-		
+		'''
 		print('execution time: %s' %((time.time() - startTime)))
 
 
