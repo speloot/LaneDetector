@@ -107,8 +107,8 @@ long lastCommandMillis = 0;
 int timeout = 1000;
 void setup()
 {
-  Serial3.begin(19200);          // Rpi port
-  Serial.begin(19200);           // Arduino port
+  Serial3.begin(115200);          // Rpi port
+  Serial.begin(115200);           // Arduino port
   car.setSpeed(0,0);
 }
 
@@ -136,7 +136,10 @@ void loop()
      }
      else
      {
-       car.setSpeed(incomingByte[1], incomingByte[0]);
+       Serial.println(incomingByte[0]);
+       Serial.println(incomingByte[1]);
+       //car.setSpeed(incomingByte[1], incomingByte[0]);
+       car.setSpeed(0, 0);
      }
      car.runCar();
   }
