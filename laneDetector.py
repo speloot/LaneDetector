@@ -15,7 +15,7 @@ def get_image():
 	"""
 	image pre-processing
 	"""
-	image_path = '/home/siaesm/Pictures/img_02/img019.jpg'
+	image_path = '/home/siaesm/Pictures/img_02/img025.jpg'
 	src_img = cv2.imread(image_path)
 	roi_img = src_img[ 240 : 450, 0 : src_img.shape[1] ]  	#	needs to be adjusted! (Y, X)
 	gray_img = cv2.cvtColor( roi_img, cv2.COLOR_BGR2GRAY )
@@ -35,28 +35,29 @@ roi_img, processed_image = get_image()
 bottom_left_part =  processed_image[0 : processed_image.shape[0] , 0 : processed_image.shape[1]//2 -1] #(Y, X)
 bottom_right_part = processed_image[0 : processed_image.shape[0] , processed_image.shape[1]//2: processed_image.shape[1]]
 
-def costum_HScan(ROI, offset): # , first_white_pixel_x , offset):
+def costum_HScan(regionOfInterest, x_offset): # , first_white_pixel_x , offset):
 	'''
-	Scans a binary frame horizontally and returns the coordinations of wihte pixels
+	Scans the regionOfInterest[Y, X] and returns the coordinations of wihte pixels (x, y) and the length of 'em
 	Input: numpy.ndarray
 	Output: a list of white pixels
 	'''
 	white_pixel_found = False
 	frame_white_pixels = []
 	white_pixels = []
-	first_white_pixel_x = - offset
-	frame_derivative = np.diff(ROI)
-	nRows = ROI.shape[0] -1 # in order to start from bottom.. 
-
+	first_white_pixel_x = - x_offset
+	frame_derivative = np.diff(regionOfInterest)
+	nRows = regionOfInterest.shape[0] -1 # in order to start from bottom.. 
+	length = 0
 	for i in xrange(nRows):
 
 		row = nRows-i
-		start_pixel = first_white_pixel_x + offset
+		start_pixel = first_white_pixel_x + x_offset
 		# find the position of the edges
 		ind_row_derivative = np.nonzero(frame_derivative[row, start_pixel:]) # returns a tuple of x coordinates
 		length_ind = len(ind_row_derivative[0])
 		if(length_ind!=0):
 			white_pixel_found = True
+			length +=1
 			for p in xrange(len(ind_row_derivative[0])): 
 				white_pixels.append([ind_row_derivative[0][p] + start_pixel, row]) #(x,y)	
 		else: 
@@ -66,102 +67,139 @@ def costum_HScan(ROI, offset): # , first_white_pixel_x , offset):
 		frame_white_pixels.append(white_pixels)
 		white_pixels = []
 		
-	return frame_white_pixels, white_pixel_found #(x,y)
+
+	return frame_white_pixels, white_pixel_found, length #(x,y)
 
 
 # first scan
-right_line_contour_candidates, right_line_found  = costum_HScan(bottom_right_part, -3) #(x,y)
-first_dashed_line_contour_candidates, first_broken_line_found = costum_HScan(bottom_left_part, -3) #(x,y)
-print('length of first broken scan:%s'%len(first_dashed_line_contour_candidates))
+right_line_contour_candidates, right_line_found, length_right_line  = costum_HScan(bottom_right_part, -3) #(x,y)
+first_broken_line_contour_candidates, first_broken_line_found, length_first_broken_line = costum_HScan(bottom_left_part, -3) #(x,y)
+
+print('length of first broken:%s'%length_first_broken_line)
 # In case no broken line is found, do the next scans until that's found
-Y_offset = 10
+
+# if the first broken is found, search the second
+Y_offset = 5
+X_offset = 20
+
 Y_old = processed_image.shape[0]
-# Find the first broken line
-while (len(first_dashed_line_contour_candidates)==0):
+X_old = processed_image.shape[1]
+length_second_broken_line = 0
+Y_new = Y_old
+
+
+while ((length_first_broken_line==0)):
 	Y_new =  Y_old - Y_offset
 	roi_1 = processed_image[0: Y_new, 0 : processed_image.shape[1]//2 -1 ]
 
-	first_dashed_line_contour_candidates, first_broken_line_found = costum_HScan(roi_1, -3)
+	first_broken_line_contour_candidates, first_broken_line_found, length_first_broken_line = costum_HScan(roi_1, -3)
 	if first_broken_line_found:
+		print 'first_broken_line_found:%s'%first_broken_line_found
 		break
 	Y_old = Y_new
-print 'first_broken_line_found:%s'%first_broken_line_found
-print '\nfirst_dashed_line_contour_candidates: %s'%first_dashed_line_contour_candidates
+	if (Y_new <= 0):
+		print('EOF!')
+		break
+	
 
-# Now find the second broken line
-second_dashed_line_contour_candidates = []
-broken_line_offset = 10
 if first_broken_line_found:
-	Y_old_2 = first_dashed_line_contour_candidates[-1][-1][1]
-	while (len(second_dashed_line_contour_candidates)==0):
-		Y_new_2 =  Y_old_2 - Y_offset
-		roi_2 = processed_image[0: Y_new_2, 0 : processed_image.shape[1]//2 -1 ]
-		second_dashed_line_contour_candidates, second_broken_line_found = costum_HScan(roi_2, -3) #(x,y)
+	# Now find the second broken line
+	Y_last = first_broken_line_contour_candidates[-1][-1][1]
+	X_last = first_broken_line_contour_candidates[-1][-1][0] 
+	while (length_second_broken_line==0):
+		Y_new =  Y_last - Y_offset
+		X_new = X_last - X_offset
+		roi_2 = processed_image[0: Y_new, X_new: processed_image.shape[1]//2 -1 ]
+		second_broken_line_contour_candidates, second_broken_line_found, length_second_broken_line = costum_HScan(roi_2, -3) #(x,y)
 		if second_broken_line_found:
 			break
-		Y_old_2 = Y_new_2
-print 'second_broken_line_found:%s'%second_broken_line_found
-print '\nsecond_dashed_line_contour_candidates: %s'%second_dashed_line_contour_candidates
-			
-dashed_line_contour_candidates = first_dashed_line_contour_candidates + second_dashed_line_contour_candidates
-#print 'dashed_line: %s'%dashed_line_contour_candidates
+		Y_last = Y_new
 
-for row in second_dashed_line_contour_candidates:
-	for point in row:
-		cv2.circle(roi_img, tuple(point), 3,(0,255,0))
-
-for row in first_dashed_line_contour_candidates:
-	for point in row:
-		cv2.circle(roi_img, tuple(point), 7,(0,0, 150))
-
-
-
-
-
+else:
+	Y_last = Y_old
+	X_last = X_old//4-1
+	while (length_second_broken_line==0):
+		Y_new =  Y_last - Y_offset
+		X_new = X_last - X_offset
+		roi_2 = processed_image[0: Y_new, X_new: processed_image.shape[1]//2 -1 ]
+		second_broken_line_contour_candidates, second_broken_line_found, length_second_broken_line = costum_HScan(roi_2, -3) #(x,y)
+		if second_broken_line_found:
+			print('second_broken_line_found: %s'%second_broken_line_found)
+			break
+		Y_last = Y_new
+		if(Y_new <= 0):
+			print('EOF!')
+		break
 
 
-
-
+print '\nfirst_broken_line_contour_candidates: %s'%first_broken_line_contour_candidates
+print '\nsecond_broken_line_contour_candidates: %s'%second_broken_line_contour_candidates
 
 
 
-
-
-
-
-
-
-
-
-
-
-def filter_get_actual_position(contour_candidates, offset):
+def filter_get_actual_position(contour_candidates, offset, right_line=True):
 	'''
 	returns cropped frame pixels to actual frame 
+	offset :(x, y)
 	'''
 	act_line = []
 	line_point_list = []
 	for lines in contour_candidates:
-		if (len(lines)>=2):
-			for p in xrange(2):
-				line_point = np.add(lines[p], offset)
-				line_point_list.append(line_point)
-		else:
-			for p in xrange(len(lines)):
-				line_point = np.add(lines[p], offset)
-				line_point_list.append(line_point)
+		if right_line:
+			if (len(lines)>=2):
+				for p in xrange(2):
+					line_point = np.add(lines[p], offset)
+					line_point_list.append(line_point)
+			else:
+				for p in xrange(len(lines)):
+					line_point = np.add(lines[p], offset)
+					line_point_list.append(line_point)
 
-		act_line.append(line_point_list)
-		line_point_list = []
+			act_line.append(line_point_list)
+			line_point_list = []
+		else:
+			if (len(lines)>=2):
+				for p in xrange(-2, 0):
+					line_point = np.add(lines[p], offset)
+					line_point_list.append(line_point)
+			else:
+				for p in xrange(len(lines)):
+					line_point = np.add(lines[p], offset)
+					line_point_list.append(line_point)
+
+			act_line.append(line_point_list)
+			line_point_list = []
+
 
 	return act_line
 
-right_line  = filter_get_actual_position(right_line_contour_candidates, (processed_image.shape[1]//2, 0))
-dashed_line = filter_get_actual_position(dashed_line_contour_candidates, (0, 0))
+right_line  = filter_get_actual_position(right_line_contour_candidates, (processed_image.shape[1]//2, 0), right_line=True)
+first_broken_line = filter_get_actual_position(first_broken_line_contour_candidates, (0, 0), right_line=False)
+
+second_broken_line = filter_get_actual_position(second_broken_line_contour_candidates, (first_broken_line_contour_candidates[-1][-1][0] - X_offset, 0), right_line=False)
+
+
+print '\nfirst_broken_line: %s'%first_broken_line
+print '\nsecond_broken_line: %s'%second_broken_line
+
+
+for row in first_broken_line:
+	for point in row:
+		cv2.circle(roi_img, tuple(point), 7,(0,0, 150))
+
+for row in second_broken_line:
+	for point in row:
+		cv2.circle(roi_img, tuple(point), 3,(0,255,0))
+
+
+
+broken_line = first_broken_line + second_broken_line
 
 # nd.array to 1d.array
 right_line_contours = np.vstack(right_line).squeeze()
-dashed_line_contours = np.vstack(dashed_line).squeeze()
+broken_line_contours = np.vstack(broken_line).squeeze()
+
+
 
 
 def get_line_specification(contours):
@@ -181,7 +219,7 @@ def get_line_specification(contours):
 	return rotated_rect_list, unchanged_rotated_rect
 
 r_rot_rect, r_unchanged_rotated_rect = get_line_specification(right_line_contours)
-d_rot_rect, d_unchanged_rotated_rect = get_line_specification(dashed_line_contours)
+d_rot_rect, d_unchanged_rotated_rect = get_line_specification(broken_line_contours)
 
 def x_intersection(p1, p2, a, b):
 	'''
@@ -198,7 +236,7 @@ def x_intersection(p1, p2, a, b):
 	return np.int(intersect)
 
 #print'right line angle: %s'%r_rot_rect[-1]
-#print'dashed line angle: %s'%d_rot_rect[-1]
+#print'broken line angle: %s'%d_rot_rect[-1]
 x_intersect = x_intersection(r_rot_rect[0], d_rot_rect[0], r_rot_rect[-1], d_rot_rect[-1] )
 """
 # check if x_intersects falls in the range
