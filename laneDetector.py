@@ -15,7 +15,7 @@ def get_image():
 	"""
 	image pre-processing
 	"""
-	image_path = '/home/siaesm/Pictures/img_02/img025.jpg'
+	image_path = '/home/siaesm/Pictures/img_02/img029.jpg'
 	src_img = cv2.imread(image_path)
 	roi_img = src_img[ 240 : 450, 0 : src_img.shape[1] ]  	#	needs to be adjusted! (Y, X)
 	gray_img = cv2.cvtColor( roi_img, cv2.COLOR_BGR2GRAY )
@@ -61,7 +61,7 @@ def costum_HScan(regionOfInterest, x_offset): # , first_white_pixel_x , offset):
 			for p in xrange(len(ind_row_derivative[0])): 
 				white_pixels.append([ind_row_derivative[0][p] + start_pixel, row]) #(x,y)	
 		else: 
-			print('No White Pixels..')
+			#print('No White Pixels..')
 			break
 		first_white_pixel_x= white_pixels[0][0]
 		frame_white_pixels.append(white_pixels)
@@ -80,7 +80,7 @@ print('length of first broken:%s'%length_first_broken_line)
 
 # if the first broken is found, search the second
 Y_offset = 5
-X_offset = 20
+X_offset = 100
 
 Y_old = processed_image.shape[0]
 X_old = processed_image.shape[1]
@@ -132,8 +132,8 @@ else:
 		break
 
 
-print '\nfirst_broken_line_contour_candidates: %s'%first_broken_line_contour_candidates
-print '\nsecond_broken_line_contour_candidates: %s'%second_broken_line_contour_candidates
+#print '\nfirst_broken_line_contour_candidates: %s'%first_broken_line_contour_candidates
+#print '\nsecond_broken_line_contour_candidates: %s'%second_broken_line_contour_candidates
 
 
 
@@ -175,23 +175,7 @@ def filter_get_actual_position(contour_candidates, offset, right_line=True):
 
 right_line  = filter_get_actual_position(right_line_contour_candidates, (processed_image.shape[1]//2, 0), right_line=True)
 first_broken_line = filter_get_actual_position(first_broken_line_contour_candidates, (0, 0), right_line=False)
-
 second_broken_line = filter_get_actual_position(second_broken_line_contour_candidates, (first_broken_line_contour_candidates[-1][-1][0] - X_offset, 0), right_line=False)
-
-
-print '\nfirst_broken_line: %s'%first_broken_line
-print '\nsecond_broken_line: %s'%second_broken_line
-
-
-for row in first_broken_line:
-	for point in row:
-		cv2.circle(roi_img, tuple(point), 7,(0,0, 150))
-
-for row in second_broken_line:
-	for point in row:
-		cv2.circle(roi_img, tuple(point), 3,(0,255,0))
-
-
 
 broken_line = first_broken_line + second_broken_line
 
@@ -199,8 +183,16 @@ broken_line = first_broken_line + second_broken_line
 right_line_contours = np.vstack(right_line).squeeze()
 broken_line_contours = np.vstack(broken_line).squeeze()
 
+print '\nb_line_contours_first: %s'%broken_line_contours[0][1] #164
+print '\nb_line_contours_last: %s'%broken_line_contours[-1][1] #68
 
+right_line_cut = []
+for r in right_line_contours:
+	if ( (r[1]>=broken_line_contours[-1][1]) & (r[1]<broken_line_contours[0][1])):
+		right_line_cut.append(r)
+print'\nright_line_cut: %s'%right_line_cut
 
+right_line_contours = np.vstack(right_line_cut).squeeze()
 
 def get_line_specification(contours):
 
@@ -221,6 +213,13 @@ def get_line_specification(contours):
 r_rot_rect, r_unchanged_rotated_rect = get_line_specification(right_line_contours)
 d_rot_rect, d_unchanged_rotated_rect = get_line_specification(broken_line_contours)
 
+#print'\nright_unchanged_rect%s'%(r_unchanged_rotated_rect,)
+#print'\nbroken_unchanged_rect%s'%(d_unchanged_rotated_rect,)
+
+#print'\nright_rotated_rect: %s'%(r_rot_rect,)
+#print'\nbroken_rotated_rect: %s'%(d_rot_rect,)
+
+
 def x_intersection(p1, p2, a, b):
 	'''
 	 Returns the x of lines intersection
@@ -235,44 +234,52 @@ def x_intersection(p1, p2, a, b):
 	intersect = ((p2[1]-gradient_b*p2[0]) - (p1[1]-gradient_a*p1[0]))//(gradient_a-gradient_b)
 	return np.int(intersect)
 
-#print'right line angle: %s'%r_rot_rect[-1]
+#print'\nright line angle: %s'%r_rot_rect[-1]
 #print'broken line angle: %s'%d_rot_rect[-1]
+
+
 x_intersect = x_intersection(r_rot_rect[0], d_rot_rect[0], r_rot_rect[-1], d_rot_rect[-1] )
-"""
-# check if x_intersects falls in the range
-if (x_intersect > processed_image.shape[1]):
-	x_intersect = processed_image.shape[1] - (x_intersect%processed_image.shape[1])
-"""
-print('executionTime: %s' %((time.time() - startTime)))
+
+
 print 'x_intersect: %s' %x_intersect
 
-
-
+#"""
+print('executionTime: %s' %((time.time() - startTime)))
 #----------Visualizering-------------------------------
+for row in first_broken_line:
+	for point in row:
+		cv2.circle(roi_img, tuple(point), 3,(0, 0, 0))
+
+for row in second_broken_line:
+	for point in row:
+		cv2.circle(roi_img, tuple(point), 3,(5, 5, 195))
+#"""
 
 def draw_rot_rect(image, contours, color):
 	box = cv2.boxPoints(tuple(contours))
 	box = np.int0(box)
-	#print box
 	cv2.drawContours(image, [box], -1, color, 2)
 
 
 set_point = processed_image.shape[1]//2-1
 
-# in red : unchanged
-draw_rot_rect(roi_img, r_unchanged_rotated_rect, (0, 0, 255))
-draw_rot_rect(roi_img, d_unchanged_rotated_rect, (0, 0, 255))
+# in violet : unchanged
+draw_rot_rect(roi_img, r_unchanged_rotated_rect, (105, 0, 255))
+draw_rot_rect(roi_img, d_unchanged_rotated_rect, (105, 0, 255))
 
 # in green 
-draw_rot_rect(roi_img, r_rot_rect, (0, 155, 0))
-draw_rot_rect(roi_img, d_rot_rect, (0, 155, 0))
+#draw_rot_rect(roi_img, r_rot_rect, (0, 155, 0))
+#draw_rot_rect(roi_img, d_rot_rect, (0, 155, 0))
 
 cv2.circle(roi_img,(x_intersect, 100), 3,(0,255,0))
-cv2.line(roi_img,(set_point, 200), (set_point, 229),(255,255,255), 1)
+cv2.line(roi_img,(set_point, 190), (set_point, 229),(150, 150, 150), 3)
 
 #cv2.line(roi_img,(320, 229), (x_intersect,10),(0, 255, 0), 1)
 
 
+cv2.putText(roi_img,'Contours',(300,170), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.7,((105, 0, 255)),1)
+cv2.putText(roi_img,'1st Broken-line',(280,150), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.7,(0, 0, 0),1)
+cv2.putText(roi_img,'2nd Broken-line',(280, 125), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.7,(5, 5, 195),1)
 cv2.imshow('image', roi_img)
 cv2.waitKey(0)
 
