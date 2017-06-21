@@ -61,6 +61,7 @@ class CarRunner {
         leftWheelOut = 0;
       } 
     } else leftWheelOut = leftSpeed;
+    
     if(rightSpeed < threshold) {
       if(counter < rightSpeed)  {
         rightWheelOut = threshold;  // set speed to minimum functioning
@@ -81,10 +82,30 @@ class CarRunner {
       RL->setSpeed(abs(leftWheelOut));
       FR->setSpeed(abs(rightWheelOut));
       RR->setSpeed(abs(rightWheelOut));
+      
+      if(leftWheels > 0) {
+        FL->run(FORWARD);
+        RL->run(FORWARD);
+        }
+      else {
+        FL->run(BACKWARD);
+        RL->run(BACKWARD);
+        }
+  
+     if(rightWheels > 0) {
+        FR->run(FORWARD);
+        RR->run(FORWARD);
+        } 
+     else {
+        FR->run(BACKWARD);
+        RR->run(BACKWARD);
+    }
+      /*
       FL->run(FORWARD);
       RL->run(FORWARD);
       FR->run(FORWARD);
       RR->run(FORWARD);
+      */
     }
   }
   public: void setSpeed(short leftWheels, short rightWheels){
