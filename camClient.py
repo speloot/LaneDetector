@@ -4,8 +4,8 @@ from __future__ import division
 import cv2
 import serial
 import socket
-#import picamera
-#import picamera.array
+import pickle
+from cStringIO import StringIO
 import io
 import threading
 import math
@@ -121,6 +121,8 @@ def draw_rot_rect(image, contours, color, thickness):
 
 def get_wheel_speed(frame_stream):
 
+	# convert string to image
+
 	imgBgr =  cv2.imdecode(np.fromstring(frame_stream.getvalue(), dtype=np.uint8), 1)
 	processed_image = get_image(imgBgr)
 	right_line_contour_candidates = costum_HScan(processed_image, -3) #(x,y)
@@ -195,12 +197,15 @@ while True:
 		l_speed = 255
 
 
+	r_speed = 0
+	l_speed = 0
 	print r_speed
 	print l_speed
 	
-	s.write(struct.pack('>h',rWheelSpeed))
-	s.write(struct.pack('>h',lWheelSpeed))
-	s.write('\n')
+	# this part needs to be replaced by write to socket 
+	#s.write(struct.pack('>h',rWheelSpeed))
+	#s.write(struct.pack('>h',lWheelSpeed))
+	#s.write('\n')
 	
 
 	draw_rot_rect(processed_image, r_rot_rect, (105, 0, 255), 2)

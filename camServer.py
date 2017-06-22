@@ -7,6 +7,9 @@ import time
 import serial
 from PIL import Image
 import threading
+import pickle
+from cStringIO import StringIO
+import base64
 '''
 cam server:
 			1-sends images fron picamera to a client
@@ -33,10 +36,16 @@ camera.resolution = (640, 480)
 camera.sensor_mode = 7
 camera.shutter_speed= 10000
 camera.framerate=40
-
+# Thread..
 image_lock = threading.Lock()
-image = b'asdf'
+# pickle
+src = StringIO()
+p = pickle.Pickler(src)
+# Image to String
+
+frame = b'asdf'
 timing = False
+
 
 def time_op(start, name):
 	tt = time.time() - start
@@ -45,13 +54,15 @@ def time_op(start, name):
 	return time.time()
 
 def camera_thread():
-	global image
+	global frame
+	global frame_str
 	cam_stream = io.BytesIO()
 
 	for foo in camera.capture_continuous(cam_stream, 'jpeg', True, quality=15, thumbnail=None):
 		
 		cam_stream.seek(0)
 		frame = cam_stream.read()
+		frame_str = base64.b64encode(frame)
 		cam_stream.seek(0)
 		cam_stream.truncate()
 		#if no clients are connected, just chill and wait to save power.
@@ -59,22 +70,29 @@ def camera_thread():
 			time.sleep(0.2)
 
 def network_thread(server_socket):
-	global image
+	global frame
+	global frame_str
+
 	client_connection = server_socket.makefile('rwb')
 	try:
 		while True:
 			command = client_connection.read(1)
 			if command != b'':
-				t = time_op(t, 'recv command')
+				#t = time_op(t, 'recv command')
 				if command ==b'p':
-					t= time.time()
-					t=time_op(t, 'capture')
-					client_connection.write(struct.pack('<L', len(image)))
-					t = time_op(t, 'send header')
-					# Rewind the stream and send the image data over the wire
-					client_connection.write(image)
-					client_connection.flush()
-					t = time_op(t, 'send data')
+				# 	t= time.time()
+				# #	t=time_op(t, 'capture')
+				# 	client_connection.write(struct.pack('<L', len(frame)))
+				# #	t = time_op(t, 'send header')
+				# 	# Rewind the stream and send the image data over the wire
+				# 	client_connection.write(frame)
+				# 	client_connection.flush()
+				
+				client_connection.write(struct.pack('<L', len(frame_str)))
+				client_connection.write(frame_str)
+				client_connection.flush()
+
+				#	t = time_op(t, 'send data')
 			else:
 				raise Exception('Stream broken!')
 	except:
