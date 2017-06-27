@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <AFMotor.h>
 
+
 class CarRunner {
   /*
   Stateful controller for the cars speed.
@@ -28,10 +29,10 @@ class CarRunner {
   AF_DCMotor* RL; // create motor #2, 2KHz pwm
 
   public: CarRunner(){
-    FR = new AF_DCMotor(1, MOTOR12_1KHZ); // create motor #4, 1KHz pwm
-    FL = new AF_DCMotor(2, MOTOR12_1KHZ); // create motor #3, 1KHz pwm
-    RR = new AF_DCMotor(4, MOTOR34_1KHZ); // create motor #1, 2KHz pwm
-    RL = new AF_DCMotor(3, MOTOR34_1KHZ); // create motor #2, 2KHz pwm
+    FR = new AF_DCMotor(1); // create motor #4, 1KHz pwm
+    FL = new AF_DCMotor(2); // create motor #3, 1KHz pwm
+    RR = new AF_DCMotor(4); // create motor #1, 2KHz pwm
+    RL = new AF_DCMotor(3); // create motor #2, 2KHz pwm
     lastCommand = millis();
   }
 
@@ -46,30 +47,31 @@ class CarRunner {
     value is linear with the speed value, and so the speed actually achieved
     is still a linear function of the speed input.
     */
-    int leftWheelOut = leftSpeed;
-    int rightWheelOut = rightSpeed;
+    uint8_t leftWheelOut_U = abs(leftSpeed);
+    uint8_t rightWheelOut_U = abs(rightSpeed);
+
     
     counter++;
     if (counter > threshold){
       counter = 0;
     }
     
-    if(leftSpeed < threshold){
+    if(abs(leftSpeed) < threshold){
       if(counter < leftSpeed)  {
-        leftWheelOut = threshold;  // set speed to minimum functioning
+        leftWheelOut_U = threshold;  // set speed to minimum functioning
       } else {
-        leftWheelOut = 0;
+        leftWheelOut_U = 0;
       } 
-    } else leftWheelOut = leftSpeed;
+    } else leftWheelOut_U = (uint8_t)abs(leftSpeed);
     
-    if(rightSpeed < threshold) {
+    if(abs(rightSpeed) < threshold) {
       if(counter < rightSpeed)  {
-        rightWheelOut = threshold;  // set speed to minimum functioning
+        rightWheelOut_U = threshold;  // set speed to minimum functioning
       } else {
-        rightWheelOut = 0;
+        rightWheelOut_U = 0;
       } 
     } else {
-      rightWheelOut = rightSpeed;
+      rightWheelOut_U = (uint8_t)abs(rightSpeed);
     }
 
     if(millis() > lastCommand + timeout_time){
@@ -78,21 +80,23 @@ class CarRunner {
       timeout = false;
     }
     if (run and not timeout){
-      FL->setSpeed(abs(leftWheelOut));
-      RL->setSpeed(abs(leftWheelOut));
-      FR->setSpeed(abs(rightWheelOut));
-      RR->setSpeed(abs(rightWheelOut));
       
-      if(leftWheels > 0) {
+      FL->setSpeed(leftWheelOut_U);
+      RL->setSpeed(leftWheelOut_U);
+      FR->setSpeed(rightWheelOut_U);
+      RR->setSpeed(rightWheelOut_U);
+      if(leftSpeed > 0) {
         FL->run(FORWARD);
         RL->run(FORWARD);
         }
       else {
         FL->run(BACKWARD);
+        Serial.print(leftSpeed);
+        Serial.print(leftWheelOut_U);
         RL->run(BACKWARD);
         }
   
-     if(rightWheels > 0) {
+     if(rightSpeed > 0) {
         FR->run(FORWARD);
         RR->run(FORWARD);
         } 
@@ -100,6 +104,7 @@ class CarRunner {
         FR->run(BACKWARD);
         RR->run(BACKWARD);
     }
+    
       /*
       FL->run(FORWARD);
       RL->run(FORWARD);
@@ -108,7 +113,7 @@ class CarRunner {
       */
     }
   }
-  public: void setSpeed(short leftWheels, short rightWheels){
+  public: void setSpeed(int leftWheels, int rightWheels){
     /*
     Setter for motor speeds. Also updates timeout timer.
     */
@@ -118,12 +123,18 @@ class CarRunner {
   }
 };
 
-int initialSpeed = 100;
+int initialSpeed = 80;
 CarRunner car = CarRunner();
-// Create an array of 3
-int incomingByte[3];
-
-
+// Create an array of 
+int incomingByte;
+int setPoint = 169;
+float kp = 1.1;
+float  pController;
+int l_wheel = 0;
+int leftW = 0;
+int r_wheel = 0;
+int rightW = 0;
+signed int var = 0;
 long lastCommandMillis = 0;
 int timeout = 1000;
 void setup()
@@ -135,15 +146,14 @@ void setup()
 
 void loop()
 {
-  while(1)
-  {
-    if (Serial3.available() >= 3)
-    {
-      for(int i=0; i<3; i++)
+    if (Serial3.available()> 0)
+     {
+      
+      while(true)
       {
-        incomingByte[i] = Serial3.read();
+        incomingByte = Serial3.parseInt();
 
-        if(incomingByte[i] == '\n')
+        if(Serial3.read() == '\n')
         {
           lastCommandMillis = millis();
           break;
@@ -153,19 +163,30 @@ void loop()
     if (millis() - lastCommandMillis > timeout)
     {
       car.setSpeed(0,0);
-      //Serial.println("no signal from Rpi! \n");
+      Serial.println("no signal from Rpi! \n");
      }
      else
      {
-       Serial.println(incomingByte[0]);
-       Serial.println(incomingByte[1]);
-       //car.setSpeed(incomingByte[1], incomingByte[0]);
-       car.setSpeed(0, 0);
+       Serial.println(incomingByte);
+       
+       pController = (kp * (setPoint - incomingByte));
+       l_wheel = 0.7*initialSpeed - pController;
+       r_wheel = 0.7*initialSpeed + pController;
+       
+       // limit range of PWM values to between -255 and 255 
+       leftW  = constrain(l_wheel,  -255, 255);
+       rightW = constrain(r_wheel, -255, 255);
+       Serial.print("l_wheel: ");
+       Serial.println(leftW);
+       Serial.print("r_wheel ");
+       Serial.println(rightW);
+       car.setSpeed(leftW, rightW);
+       //car.setSpeed(0, 0);
      }
      car.runCar();
   }
 
-}
+
 
 
 
