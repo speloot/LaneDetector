@@ -1,5 +1,9 @@
 #!/usr/bin/python
 # -*- coding: iso-8859-15 -*-
+"""
+fetches image data continuously from PiCamera, detects marking lines, computes and sends the appropriate dc motor signals to arduino
+
+"""
 from __future__ import division
 import cv2
 import serial
