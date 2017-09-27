@@ -1,6 +1,14 @@
 #!/usr/bin/python
 # -*- coding: iso-8859-15 -*-
 
+"""
+fetches sample "image", scans certain parts of the image to detect certain features (marking lines)
+finds the intersection of detected marking lines in order to determin the direction which vehicle 
+has to take.
+
+its a prototype which assess the time duration of the process and visualizes the results 
+
+"""
 from __future__ import division
 import cv2
 import os
